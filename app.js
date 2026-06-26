@@ -503,7 +503,7 @@ async function clearCurrentTripData() {
 }
 
 // ==========================================
-// 🎨 前端介面渲染與分帳算法
+// 🎨 前端介面渲染與分帳算法 (新增邊個畀邊個功能)
 // ==========================================
 function renderAll() {
     const tbody = document.getElementById('expense-tbody'); tbody.innerHTML = '';
@@ -523,24 +523,22 @@ function renderAll() {
         totalNet += exp.net_amount_aud; totalSaved += exp.shopback_saved_aud;
         if (catTotals[exp.category] !== undefined) catTotals[exp.category] += exp.net_amount_aud; else catTotals["其他"] += exp.net_amount_aud;
         
-        // 1. 處理代墊付出（按實際扣除 ShopBack 返利後的淨值比例折算 AUD）
+        // 1. 處理代墊付出
         if (exp.paid_detail && Object.keys(exp.paid_detail).length > 0) {
             for (let member in exp.paid_detail) {
                 let memberPaidNzd = exp.paid_detail[member];
-                let ratio = memberPaidNzd / exp.amount; // 佔該筆總金額的比例
+                let ratio = memberPaidNzd / exp.amount; 
                 let memberPaidAud = exp.net_amount_aud * ratio;
                 if (userPaid[member] !== undefined) {
                     userPaid[member] += memberPaidAud;
                 }
             }
         } else {
-            // 防呆或舊資料 Fallback
             if (userPaid[exp.payer] !== undefined) userPaid[exp.payer] += exp.net_amount_aud;
         }
 
         // 2. 處理應分攤扣款
         if (exp.has_custom_split && exp.split_detail && Object.keys(exp.split_detail).length > 0) {
-            // 走 CSV 精準自訂拆帳
             for (let member in exp.split_detail) {
                 let memberSplitNzd = exp.split_detail[member];
                 let ratio = memberSplitNzd / exp.amount;
@@ -550,7 +548,6 @@ function renderAll() {
                 }
             }
         } else {
-            // 走預設全團人數平分
             const activeMembers = currentMembers.length || 1;
             const avgOwedAud = exp.net_amount_aud / activeMembers;
             currentMembers.forEach(member => {
@@ -572,7 +569,6 @@ function renderAll() {
         else if(exp.category === "通訊") catBadgeColor = "bg-indigo-950/50 text-indigo-400 border border-indigo-800/50";
         else if(exp.category === "醫療保健") catBadgeColor = "bg-red-950/50 text-red-400 border border-red-800/50";
 
-        // 表格顯示優化：若是多人共同出資，付款人顯示加上「等X人」
         let payerDisplay = exp.payer;
         if (exp.paid_detail && Object.keys(exp.paid_detail).length > 1) {
             payerDisplay += ` (等 ${Object.keys(exp.paid_detail).length} 人)`;
@@ -597,14 +593,28 @@ function renderAll() {
     document.getElementById('total-shopback-aud').textContent = `$${totalSaved.toFixed(2)} AUD`;
     document.getElementById('total-count').textContent = `${expenses.length} 筆`;
 
-    // 3. 渲染對帳清單（個人「總付出」減去「總分攤」）
+    // ==========================================
+    // 💡 核心升級：3. 渲染對帳清單與精準過數方案
+    // ==========================================
     const settlementList = document.getElementById('settlement-list'); settlementList.innerHTML = '';
     if (expenses.length > 0) {
-        let sHtml = `<p class="mb-2 text-slate-400 text-xs">📊 已成功啟用 Supabase JSONB 多人分帳引擎技術</p><ul class="space-y-1.5 border-t border-slate-700 pt-2">`;
+        let sHtml = `<p class="mb-2 text-slate-400 text-xs">📊 已成功啟用 Supabase JSONB 多人分帳引擎技術</p><ul class="space-y-1.5 border-t border-slate-700 pt-2 mb-4">`;
+        
+        let debtors = [];   // 需要補交錢的人
+        let creditors = []; // 可以收回錢的人
+
         for (let user in userPaid) {
             let paid = userPaid[user];
             let owed = userOwed[user] || 0;
             let diff = paid - owed;
+            
+            // 將所有人分類至債務陣列
+            if (diff < -0.01) {
+                debtors.push({ name: user, amount: Math.abs(diff) });
+            } else if (diff > 0.01) {
+                creditors.push({ name: user, amount: diff });
+            }
+
             sHtml += `<li class="flex justify-between items-center text-xs">
                 <span>
                     ${diff >= 0 ? '🟢' : '🔴'} 
@@ -616,7 +626,44 @@ function renderAll() {
                 </span>
             </li>`;
         }
-        settlementList.innerHTML = sHtml + `</ul>`;
+        sHtml += `</ul>`;
+
+        // 🧠 貪婪算法配對：最佳化計算邊個畀邊個幾多錢
+        let transfers = [];
+        let dIdx = 0, cIdx = 0;
+        
+        while (dIdx < debtors.length && cIdx < creditors.length) {
+            let debtor = debtors[dIdx];
+            let creditor = creditors[cIdx];
+            let amount = Math.min(debtor.amount, creditor.amount);
+            
+            if (amount > 0.01) {
+                transfers.push({ from: debtor.name, to: creditor.name, amount: amount });
+            }
+            
+            debtor.amount -= amount;
+            creditor.amount -= amount;
+            
+            if (debtor.amount <= 0.01) dIdx++;
+            if (creditor.amount <= 0.01) cIdx++;
+        }
+
+        // 渲染到畫面上
+        sHtml += `<p class="mb-2 text-slate-400 text-xs border-t border-slate-700 pt-3 font-semibold">💸 最終過數方案 (直接跟住執即可)：</p>`;
+        if (transfers.length > 0) {
+            sHtml += `<ul class="space-y-1.5 bg-slate-950/60 p-2.5 rounded border border-slate-800">`;
+            transfers.forEach(t => {
+                sHtml += `<li class="text-xs text-slate-300 flex justify-between items-center">
+                    <span>💵 <span class="font-bold text-rose-400">${t.from}</span> 需要支付畀 <span class="font-bold text-emerald-400">${t.to}</span></span>
+                    <span class="font-extrabold text-sky-400">$${t.amount.toFixed(2)} AUD</span>
+                </li>`;
+            });
+            sHtml += `</ul>`;
+        } else {
+            sHtml += `<p class="text-xs text-emerald-400 italic bg-slate-950/60 p-2 rounded text-center">🎉 帳目完全平衡，所有人互不相欠！</p>`;
+        }
+
+        settlementList.innerHTML = sHtml;
     } else { settlementList.innerHTML = '<p class="text-slate-400 italic">暫無數據。</p>'; }
 
     renderChart(catTotals);
