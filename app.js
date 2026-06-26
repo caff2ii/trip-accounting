@@ -151,33 +151,33 @@ async function createNewTripManual() {
 function handlePortalCsvMagic(e) {
     const file = e.target.files[0]; if (!file) return;
     
-    // 如果用家冇填旅程名，自動攞 CSV 檔案名稱（扣除副檔名）作為 Trip 名！超級流暢
     const userTripName = document.getElementById('input-new-trip-name').value.trim();
     const tripName = userTripName || file.name.replace(/\.[^/.]+$/, "");
 
     const reader = new FileReader();
     reader.onload = async function(evt) {
-        const lines = evt.target.result.split(/\r?\n/);
+        // 💡 修正 1：讀取時先過濾走所有空白行，確保 lines 陣列最後一個就是真正的「總計/最後一行」
+        const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length < 2) { alert("CSV 數據量不足"); return; }
 
         const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
         
-        // 🌟 改用結構定位法：精準抓取「分攤」到「代墊」之間嘅人名，並減 1 完美避開旅程名！
         let extractedMembers = new Set();
         const startIndex = csvHeaders.indexOf("分攤");
         const endIndex = csvHeaders.indexOf("代墊");
         
         if (startIndex !== -1 && endIndex !== -1) {
-            // endIndex - 1 欄位就是旅程名稱，所以用 < 符號剛好可以在它之前止步
-            for (let i = startIndex + 1; i < endIndex - 1; i++) {
+            // 💡 修正 2：既然你刪除了旅程欄位，將原先的 endIndex - 1 改回 endIndex！
+            // 咁樣就可以一路讀到「代墊」前一格，將 5 個人（Caff, Fanny, Simba, Eva, Leo）全數抓回！
+            for (let i = startIndex + 1; i < endIndex; i++) {
                 if (csvHeaders[i]) extractedMembers.add(csvHeaders[i]);
             }
         }
 
-        // 雙重保險：如果 Header 搵唔到，去巡查「支出的人」呢個 Column 撈出所有出過錢嘅人名
         const payerColIdx = csvHeaders.indexOf('支出的人');
         if (payerColIdx !== -1) {
-            for (let i = 1; i < lines.length; i++) {
+            // 💡 修正 3：改成 lines.length - 1，確保巡查人名時自動略過最後一行的總計
+            for (let i = 1; i < lines.length - 1; i++) {
                 const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
                 if (cols[payerColIdx]) extractedMembers.add(cols[payerColIdx]);
             }
@@ -225,11 +225,12 @@ function handlePortalCsvMagic(e) {
 function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
     let payload = [];
     
-    // 1. 動態尋找 CSV 中「分攤」和「代墊」直行的邊界索引位置
     const splitStartIdx = csvHeaders.indexOf('分攤');
     const advanceStartIdx = csvHeaders.indexOf('代墊');
     
-    for (let i = 1; i < lines.length; i++) {
+    // 💡 修正 4：將 i < lines.length 改成 i < lines.length - 1
+    // 咁樣在打包帳目數據上載時，程式就會在最後一行的前一行自動停低，完全唔會讀埋總計行！
+    for (let i = 1; i < lines.length - 1; i++) {
         if (!lines[i].trim()) continue;
         const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
         if (cols.length < csvHeaders.length) continue;
@@ -250,7 +251,6 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
         else if (rawCategory.includes("通訊")) category = "通訊";
         else if (rawCategory.includes("醫療")) category = "醫療保健";
 
-        // 2. 精準解析「分攤細節」（誰該付這筆錢）
         let split_detail = {};
         let has_custom_split = false;
         if (splitStartIdx !== -1 && advanceStartIdx !== -1) {
@@ -265,7 +265,6 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
             }
         }
         
-        // 3. 精準解析「代墊細節」（這筆錢是由誰出的）
         let paid_detail = {};
         let primaryPayer = "未知";
         let maxPaid = -1;
@@ -278,13 +277,12 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
                     paid_detail[memberName] = val;
                     if (val > maxPaid) {
                         maxPaid = val;
-                        primaryPayer = memberName; // 抓出資最多的人當作主要付款人（兼容舊欄位）
+                        primaryPayer = memberName;
                     }
                 }
             }
         }
         
-        // 如果防呆機制發現代墊沒填，Fallback 到「支出的人」
         if (Object.keys(paid_detail).length === 0) {
             primaryPayer = row['支出的人'] || membersList[0] || "未知";
             paid_detail[primaryPayer] = amount;
@@ -465,7 +463,8 @@ function handleCsvImport(e) {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = async function(evt) {
-        const lines = evt.target.result.split(/\r?\n/);
+        // 💡 修正 5：這裡同樣加上 .filter(l => l.length > 0) 清走結尾空白行
+        const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length < 2) return;
         const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
         let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, currentMembers, currentTripId);
