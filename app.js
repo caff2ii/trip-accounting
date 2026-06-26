@@ -224,6 +224,11 @@ function handlePortalCsvMagic(e) {
 // 提取共用的 CSV 行數轉換器
 function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
     let payload = [];
+    
+    // 1. 動態尋找 CSV 中「分攤」和「代墊」直行的邊界索引位置
+    const splitStartIdx = csvHeaders.indexOf('分攤');
+    const advanceStartIdx = csvHeaders.indexOf('代墊');
+    
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
@@ -245,22 +250,53 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
         else if (rawCategory.includes("通訊")) category = "通訊";
         else if (rawCategory.includes("醫療")) category = "醫療保健";
 
-        let payer = membersList[0] || "未知"; 
-        for (let member of membersList) {
-            if ((row[member + '.1'] && parseFloat(row[member + '.1']) > 0) || 
-                (row[member] && parseFloat(row[member]) > 0) || 
-                row['支出的人'] === member) {
-                payer = member;
-                break;
+        // 2. 精準解析「分攤細節」（誰該付這筆錢）
+        let split_detail = {};
+        let has_custom_split = false;
+        if (splitStartIdx !== -1 && advanceStartIdx !== -1) {
+            for (let idx = splitStartIdx + 1; idx < advanceStartIdx; idx++) {
+                const memberName = csvHeaders[idx];
+                if (!membersList.includes(memberName)) continue; 
+                const val = parseFloat(cols[idx]);
+                if (!isNaN(val) && val > 0) {
+                    split_detail[memberName] = val;
+                    has_custom_split = true;
+                }
             }
+        }
+        
+        // 3. 精準解析「代墊細節」（這筆錢是由誰出的）
+        let paid_detail = {};
+        let primaryPayer = "未知";
+        let maxPaid = -1;
+        if (advanceStartIdx !== -1) {
+            for (let idx = advanceStartIdx + 1; idx < csvHeaders.length; idx++) {
+                const memberName = csvHeaders[idx];
+                if (!membersList.includes(memberName)) continue;
+                const val = parseFloat(cols[idx]);
+                if (!isNaN(val) && val > 0) {
+                    paid_detail[memberName] = val;
+                    if (val > maxPaid) {
+                        maxPaid = val;
+                        primaryPayer = memberName; // 抓出資最多的人當作主要付款人（兼容舊欄位）
+                    }
+                }
+            }
+        }
+        
+        // 如果防呆機制發現代墊沒填，Fallback 到「支出的人」
+        if (Object.keys(paid_detail).length === 0) {
+            primaryPayer = row['支出的人'] || membersList[0] || "未知";
+            paid_detail[primaryPayer] = amount;
         }
 
         let rate = exchangeRates[date] || 0.8200;
         let amount_in_aud = amount * rate;
 
         payload.push({
-            trip_id: tripId, date, name, amount, currency: 'NZD', category, payer,
-            shopback_pct: 0, rate, shopback_saved_aud: 0, net_amount_aud: amount_in_aud, amount_in_aud, is_overridden: false
+            trip_id: tripId, date, name, amount, currency: 'NZD', category, payer: primaryPayer,
+            shopback_pct: 0, rate, shopback_saved_aud: 0, net_amount_aud: amount_in_aud, amount_in_aud, is_overridden: false,
+            split_detail, paid_detail, has_custom_split
         });
     }
     return payload;
@@ -352,7 +388,17 @@ async function handleFormSubmit(e) {
     const shopback_saved_aud = amount_in_aud * (shopback_pct / 100);
     const net_amount_aud = amount_in_aud - shopback_saved_aud;
 
-    const payload = { trip_id: currentTripId, date, name, amount, currency, category, payer, shopback_pct, rate, shopback_saved_aud, net_amount_aud, amount_in_aud, is_overridden };
+    // 建立預設的手動記帳分帳 JSONB 結構
+    let paid_detail = {};
+    paid_detail[payer] = amount; // 預設由單一付款人支付全額
+
+    let split_detail = {}; // 留空表示渲染時走全體均分邏輯
+
+    const payload = { 
+        trip_id: currentTripId, date, name, amount, currency, category, payer, 
+        shopback_pct, rate, shopback_saved_aud, net_amount_aud, amount_in_aud, is_overridden,
+        split_detail, paid_detail, has_custom_split: false
+    };
     
     await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { method: "POST", headers: headers, body: JSON.stringify(payload) });
     this.reset();
@@ -412,14 +458,54 @@ function renderAll() {
     
     let catTotals = { "餐飲": 0, "超市": 0, "住房": 0, "汽車": 0, "休閒育樂": 0, "手信": 0, "通訊": 0, "醫療保健": 0, "其他": 0 };
     
+    // 初始化每個人「實際代墊的錢」與「個人應分攤的錢」帳目矩陣
     let userPaid = {};
-    currentMembers.forEach(m => { userPaid[m] = 0; });
+    let userOwed = {};
+    currentMembers.forEach(m => { 
+        userPaid[m] = 0; 
+        userOwed[m] = 0; 
+    });
 
     expenses.forEach(exp => {
         totalNet += exp.net_amount_aud; totalSaved += exp.shopback_saved_aud;
         if (catTotals[exp.category] !== undefined) catTotals[exp.category] += exp.net_amount_aud; else catTotals["其他"] += exp.net_amount_aud;
         
-        if (userPaid[exp.payer] !== undefined) userPaid[exp.payer] += exp.net_amount_aud;
+        // 1. 處理代墊付出（按實際扣除 ShopBack 返利後的淨值比例折算 AUD）
+        if (exp.paid_detail && Object.keys(exp.paid_detail).length > 0) {
+            for (let member in exp.paid_detail) {
+                let memberPaidNzd = exp.paid_detail[member];
+                let ratio = memberPaidNzd / exp.amount; // 佔該筆總金額的比例
+                let memberPaidAud = exp.net_amount_aud * ratio;
+                if (userPaid[member] !== undefined) {
+                    userPaid[member] += memberPaidAud;
+                }
+            }
+        } else {
+            // 防呆或舊資料 Fallback
+            if (userPaid[exp.payer] !== undefined) userPaid[exp.payer] += exp.net_amount_aud;
+        }
+
+        // 2. 處理應分攤扣款
+        if (exp.has_custom_split && exp.split_detail && Object.keys(exp.split_detail).length > 0) {
+            // 走 CSV 精準自訂拆帳
+            for (let member in exp.split_detail) {
+                let memberSplitNzd = exp.split_detail[member];
+                let ratio = memberSplitNzd / exp.amount;
+                let memberOwedAud = exp.net_amount_aud * ratio;
+                if (userOwed[member] !== undefined) {
+                    userOwed[member] += memberOwedAud;
+                }
+            }
+        } else {
+            // 走預設全團人數平分
+            const activeMembers = currentMembers.length || 1;
+            const avgOwedAud = exp.net_amount_aud / activeMembers;
+            currentMembers.forEach(member => {
+                if (userOwed[member] !== undefined) {
+                    userOwed[member] += avgOwedAud;
+                }
+            });
+        }
 
         let calcBasisText = exp.is_overridden ? `<span class="text-amber-400 font-semibold">✍️ 覆寫: $${exp.amount_in_aud.toFixed(2)}</span>` : (exp.currency === 'NZD' ? `匯率: ${parseFloat(exp.rate).toFixed(4)}` : '直結 AUD');
 
@@ -433,6 +519,12 @@ function renderAll() {
         else if(exp.category === "通訊") catBadgeColor = "bg-indigo-950/50 text-indigo-400 border border-indigo-800/50";
         else if(exp.category === "醫療保健") catBadgeColor = "bg-red-950/50 text-red-400 border border-red-800/50";
 
+        // 表格顯示優化：若是多人共同出資，付款人顯示加上「等X人」
+        let payerDisplay = exp.payer;
+        if (exp.paid_detail && Object.keys(exp.paid_detail).length > 1) {
+            payerDisplay += ` (等 ${Object.keys(exp.paid_detail).length} 人)`;
+        }
+
         let row = document.createElement('tr'); row.className = "hover:bg-slate-700/50 text-xs";
         row.innerHTML = `
             <td class="p-3 whitespace-nowrap">${exp.date}</td>
@@ -442,7 +534,7 @@ function renderAll() {
             <td class="p-3 text-slate-400 whitespace-nowrap">${calcBasisText}</td>
             <td class="p-3 text-sky-400">${exp.shopback_pct}%</td>
             <td class="p-3 font-semibold text-emerald-400">$${parseFloat(exp.net_amount_aud).toFixed(2)}</td>
-            <td class="p-3 text-slate-300 font-medium">${exp.payer}</td>
+            <td class="p-3 text-slate-300 font-medium">${payerDisplay}</td>
             <td class="p-3"><button onclick="deleteItem(${exp.id})" class="text-slate-500 hover:text-rose-400 transition-colors cursor-pointer">刪除</button></td>
         `;
         tbody.appendChild(row);
@@ -452,16 +544,24 @@ function renderAll() {
     document.getElementById('total-shopback-aud').textContent = `$${totalSaved.toFixed(2)} AUD`;
     document.getElementById('total-count').textContent = `${expenses.length} 筆`;
 
-    // 全動態分帳：隨成員人數動態變更分母
-    const memberCount = currentMembers.length || 1;
-    const sharePerPerson = totalNet / memberCount;
-    
+    // 3. 渲染對帳清單（個人「總付出」減去「總分攤」）
     const settlementList = document.getElementById('settlement-list'); settlementList.innerHTML = '';
     if (expenses.length > 0) {
-        let sHtml = `<p class="mb-2 text-slate-400">總共 ${memberCount} 人均分，每人應分擔: <strong class="text-white">$${sharePerPerson.toFixed(2)} AUD</strong></p><ul class="space-y-1.5 border-t border-slate-700 pt-2">`;
+        let sHtml = `<p class="mb-2 text-slate-400 text-xs">📊 已成功啟用 Supabase JSONB 多人分帳引擎技術</p><ul class="space-y-1.5 border-t border-slate-700 pt-2">`;
         for (let user in userPaid) {
-            let diff = userPaid[user] - sharePerPerson;
-            sHtml += `<li class="flex justify-between"><span>${diff >= 0 ? '🟢':'🔴'} <span class="font-bold text-white">${user}</span></span> <span class="${diff>=0?'text-emerald-400':'text-rose-400'} font-bold">${diff>=0?'收回':'補交'} $${Math.abs(diff).toFixed(2)} AUD</span></li>`;
+            let paid = userPaid[user];
+            let owed = userOwed[user] || 0;
+            let diff = paid - owed;
+            sHtml += `<li class="flex justify-between items-center text-xs">
+                <span>
+                    ${diff >= 0 ? '🟢' : '🔴'} 
+                    <span class="font-bold text-white">${user}</span> 
+                    <span class="text-slate-400 ml-1 text-[11px]">(代墊: $${paid.toFixed(1)} / 分攤: $${owed.toFixed(1)})</span>
+                </span>
+                <span class="${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">
+                    ${diff >= 0 ? '收回' : '補交'} $${Math.abs(diff).toFixed(2)} AUD
+                </span>
+            </li>`;
         }
         settlementList.innerHTML = sHtml + `</ul>`;
     } else { settlementList.innerHTML = '<p class="text-slate-400 italic">暫無數據。</p>'; }
