@@ -162,15 +162,17 @@ function handlePortalCsvMagic(e) {
 
         const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
         
-        // 系統保留字，只要 CSV 欄位名稱唔屬於呢堆、亦唔包括點1或TRIP，就100%係人名
-        const systemKeywords = ['建立日期', '登錄日期', '金額', '備註', '結算', '收入分類', '領取收入的人', '借給的人', '借款人', '轉帳者', '收款人', '支出分類', '分攤支出', '支出的人', '分攤', '代墊'];
+        // 🌟 改用結構定位法：精準抓取「分攤」到「代墊」之間嘅人名，並減 1 完美避開旅程名！
         let extractedMembers = new Set();
-
-        csvHeaders.forEach(h => {
-            if (h && !systemKeywords.includes(h) && !h.includes('.1') && !h.toUpperCase().includes('TRIP')) {
-                extractedMembers.add(h);
+        const startIndex = csvHeaders.indexOf("分攤");
+        const endIndex = csvHeaders.indexOf("代墊");
+        
+        if (startIndex !== -1 && endIndex !== -1) {
+            // endIndex - 1 欄位就是旅程名稱，所以用 < 符號剛好可以在它之前止步
+            for (let i = startIndex + 1; i < endIndex - 1; i++) {
+                if (csvHeaders[i]) extractedMembers.add(csvHeaders[i]);
             }
-        });
+        }
 
         // 雙重保險：如果 Header 搵唔到，去巡查「支出的人」呢個 Column 撈出所有出過錢嘅人名
         const payerColIdx = csvHeaders.indexOf('支出的人');
