@@ -340,14 +340,25 @@ function enterDashboard(id, name, code, members) {
 }
 
 function exitToPortal() {
-    currentTripId = null; currentTripCode = ""; currentMembers = [];
-    document.getElementById('input-load-code').value = "";
-    document.getElementById('input-new-trip-name').value = "";
-    document.getElementById('input-new-trip-members').value = "";
-    document.getElementById('portal-csv-input').value = "";
+    currentTripId = null; 
+    currentTripCode = ""; 
+    currentMembers = [];
+    
+    // 💡 加入安全防呆檢查：確保元素存在才清空，避免因為找不到舊 ID 而令整個功能癱瘓
+    if (document.getElementById('input-load-code')) document.getElementById('input-load-code').value = "";
+    if (document.getElementById('input-new-trip-name')) document.getElementById('input-new-trip-name').value = "";
+    if (document.getElementById('portal-csv-input')) document.getElementById('portal-csv-input').value = "";
+    
+    // 如果你 HTML 還留著舊欄位就清空，冇咗亦唔會報錯
+    const oldMembersInput = document.getElementById('input-new-trip-members');
+    if (oldMembersInput) oldMembersInput.value = "";
+
+    // 順利切換隱藏狀態
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('portal-screen').classList.remove('hidden');
     document.body.className = "p-4 md:p-8 flex items-center justify-center min-h-screen";
+    
+    // 重新初始化首頁一格格的旅伴輸入框
     initDefaultMemberRows();
 }
 
