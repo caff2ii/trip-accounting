@@ -26,14 +26,15 @@ const headers = {
 // 🚀 頁面初始化
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-    const dateSelect = document.getElementById('exp-date');
-    if (dateSelect) {
-        Object.keys(exchangeRates).sort().forEach(date => {
-            let opt = document.createElement('option'); 
-            opt.value = date; 
-            opt.textContent = date;
-            dateSelect.appendChild(opt);
-        });
+    const dateInput = document.getElementById('exp-date');
+    if (dateInput) {
+        // 自動獲取當前本地日期的 YYYY-MM-DD 格式並設為預設值
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
     }
     bindEvents();
 });
