@@ -14,6 +14,7 @@ let myChart = null;
 let currentTripId = null; 
 let currentTripCode = "";
 let currentMembers = []; 
+let editingExpenseId = null; // 🌟 新增：用來記錄目前正在編輯哪一筆開支的 ID
 
 const headers = {
     "apikey": SUPABASE_CONFIG.ANON_KEY,
@@ -339,10 +340,33 @@ function enterDashboard(id, name, code, members) {
     fetchDataFromSupabase();
 }
 
+// 🌟 全新新增：統一還原表單與按鈕狀態的防呆工具
+function resetFormState() {
+    editingExpenseId = null;
+    
+    // 清空基本表單
+    const form = document.getElementById('expense-form');
+    if (form) form.reset();
+    
+    // 還原提交按鈕的字眼
+    const submitBtn = document.querySelector('#expense-form button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = "➕ 新增此筆開支";
+    
+    // 🌟 移除動態產生的「刪除」按鈕
+    const dynamicDeleteBtn = document.getElementById('form-dynamic-delete-btn');
+    if (dynamicDeleteBtn) dynamicDeleteBtn.remove();
+    
+    // 重新初始化多人的自訂拆帳格仔
+    renderManualMemberFields();
+}
+
 function exitToPortal() {
     currentTripId = null; 
     currentTripCode = ""; 
     currentMembers = [];
+    
+    // 🌟 新增：退出旅程回到大廳時，也順便把表單編輯狀態與動態按鈕重置洗淨
+    resetFormState();
     
     // 💡 加入安全防呆檢查：確保元素存在才清空，避免因為找不到舊 ID 而令整個功能癱瘓
     if (document.getElementById('input-load-code')) document.getElementById('input-load-code').value = "";
@@ -450,21 +474,35 @@ async function handleFormSubmit(e) {
         split_detail, paid_detail, has_custom_split
     };
     
-    await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { method: "POST", headers: headers, body: JSON.stringify(payload) });
+    if (editingExpenseId) {
+        // 如果有 ID，用 PATCH 修改該筆資料
+        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${editingExpenseId}`, { 
+            method: "PATCH", 
+            headers: headers, 
+            body: JSON.stringify(payload) 
+        });
+    } else {
+        // 如果沒有 ID，照原樣用 POST 新增一筆
+        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { 
+            method: "POST", 
+            headers: headers, 
+            body: JSON.stringify(payload) 
+        });
+    }
     
-    this.reset();
-    renderManualMemberFields(); // 🌟 表單重設後，順便洗乾淨並重置進階分帳輸入格
+    resetFormState();
     fetchDataFromSupabase();
 }
 
 async function deleteItem(id) {
     if(confirm("確定要刪除此筆雲端開支嗎？")) {
-        // 🌟 改變策略：method 轉為 PATCH，並加上 body 傳入狀態
         await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${id}`, { 
             method: "PATCH", 
             headers: headers,
             body: JSON.stringify({ is_deleted: true }) 
         });
+        // 🌟 新增：刪除完後呼叫狀態重置，讓表單回復為「新增模式」並隱藏刪除掣
+        resetFormState();
         fetchDataFromSupabase();
     }
 }
@@ -584,7 +622,9 @@ function renderAll() {
             <td class="p-3 text-sky-400">${exp.shopback_pct}%</td>
             <td class="p-3 font-semibold text-emerald-400">$${parseFloat(exp.net_amount_aud).toFixed(2)}</td>
             <td class="p-3 text-slate-300 font-medium">${payerDisplay}</td>
-            <td class="p-3"><button onclick="deleteItem(${exp.id})" class="text-slate-500 hover:text-rose-400 transition-colors cursor-pointer">刪除</button></td>
+            <td class="p-3">
+                <button onclick="editItem(${exp.id})" class="text-sky-400 hover:text-sky-300 font-medium transition-colors cursor-pointer">編輯</button>
+            </td>
         `;
         tbody.appendChild(row);
     });
@@ -708,4 +748,59 @@ function renderManualMemberFields() {
         `;
         container.appendChild(row);
     });
+}
+
+// 🌟 全新新增：點擊明細表「編輯」時觸發的動作
+function editItem(id) {
+    const exp = expenses.find(e => e.id === id);
+    if (!exp) return;
+
+    editingExpenseId = id; // 鎖定目前修改中的 ID
+
+    // 1. 將基本欄位塞回表單
+    document.getElementById('exp-date').value = exp.date;
+    document.getElementById('exp-name').value = exp.name;
+    document.getElementById('exp-amount').value = exp.amount;
+    document.getElementById('exp-currency').value = exp.currency;
+    document.getElementById('exp-category').value = exp.category;
+    document.getElementById('exp-payer').value = exp.payer;
+    document.getElementById('exp-shopback').value = exp.shopback_pct;
+    document.getElementById('exp-override').value = exp.is_overridden ? exp.amount_in_aud : "";
+
+    // 2. 塞回旅伴細項數據
+    renderManualMemberFields();
+    const splitRows = document.querySelectorAll('.member-split-row');
+    splitRows.forEach(row => {
+        const m = row.dataset.member;
+        const paidInput = row.querySelector('.member-paid-input');
+        const splitInput = row.querySelector('.member-split-input');
+        if (exp.paid_detail && exp.paid_detail[m] !== undefined) paidInput.value = exp.paid_detail[m];
+        if (exp.split_detail && exp.split_detail[m] !== undefined) splitInput.value = exp.split_detail[m];
+    });
+
+    // 3. 改變表單 Submit 按鈕字眼
+    const submitBtn = document.querySelector('#expense-form button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.textContent = "💾 儲存修改項目";
+
+        // 🌟 如果畫面上還沒有刪除掣，就動態在儲存按鈕旁加上一個紅色的「刪除此筆」按鈕
+        if (!document.getElementById('form-dynamic-delete-btn')) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.id = 'form-dynamic-delete-btn';
+            deleteBtn.type = 'button'; // 🌟 必須設定為 button，防止誤觸 form submit
+            deleteBtn.className = 'ml-2 bg-rose-950/40 hover:bg-rose-900 border border-rose-800 text-rose-300 py-2 px-4 rounded text-xs font-medium transition-colors cursor-pointer';
+            deleteBtn.textContent = '🗑️ 刪除此筆項目';
+            
+            // 點擊時直接觸發原有的刪除功能
+            deleteBtn.onclick = async function() {
+                await deleteItem(id);
+            };
+            
+            // 緊貼插在儲存修改按鈕後面
+            submitBtn.parentNode.appendChild(deleteBtn);
+        }
+    }
+
+    // 4. 自動流暢捲動回網頁上方的表單位置
+    document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
