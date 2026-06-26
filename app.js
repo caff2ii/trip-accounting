@@ -60,6 +60,42 @@ function bindEvents() {
     document.getElementById('csv-file-input').addEventListener('change', handleCsvImport);
     document.getElementById('clear-db-data').addEventListener('click', clearCurrentTripData);
     document.getElementById('btn-exit-to-portal').addEventListener('click', exitToPortal);
+    document.getElementById('btn-add-member-row').addEventListener('click', () => addMemberInputRow());
+
+    // 網頁一開波，預設幫用家建好 3 格
+    initDefaultMemberRows();
+}
+
+// 預設初始化格仔
+function initDefaultMemberRows() {
+    const container = document.getElementById('members-input-container');
+    if (!container) return;
+    container.innerHTML = ''; // 先清空
+    addMemberInputRow(""); // 留空一格俾佢哋自己填
+}
+
+// 核心：每撳一次加號，就生一格帶有減號嘅 Input Row
+function addMemberInputRow(value = "") {
+    const container = document.getElementById('members-input-container');
+    const row = document.createElement('div');
+    row.className = "flex items-center gap-2 member-input-row";
+    
+    row.innerHTML = `
+        <input type="text" placeholder="輸入旅伴名字" value="${value}" class="flex-grow text-xs bg-slate-950 border border-slate-700 rounded p-1.5 text-white focus:border-sky-500 focus:outline-none">
+        <button type="button" class="btn-remove-member-row bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 border border-rose-800/50 px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer">➖</button>
+    `;
+    
+    // 💡 綁定減號按鈕：撳一撳就將自己呢行長眠
+    row.querySelector('.btn-remove-member-row').addEventListener('click', () => {
+        // 保留機制：唔好俾用家刪到一格都冇
+        if (container.querySelectorAll('.member-input-row').length > 1) {
+            row.remove();
+        } else {
+            alert("❌ 記帳系統至少需要保留一位旅伴！");
+        }
+    });
+    
+    container.appendChild(row);
 }
 
 function generateSecureTripCode() {
@@ -85,10 +121,18 @@ async function loadExistingTrip() {
 // 軌道 1：手動建立旅程
 async function createNewTripManual() {
     const name = document.getElementById('input-new-trip-name').value.trim() || "未命名新旅程";
-    const membersRaw = document.getElementById('input-new-trip-members').value.trim();
-    if (!membersRaw) { alert("手動起帳模式必須輸入至少一位旅伴名字！"); return; }
+    
+    // 🌟 核心修改：撈取全部一格格嘅 input 內容
+    const inputs = document.querySelectorAll('#members-input-container input');
+    const membersArray = Array.from(inputs)
+                              .map(i => i.value.trim())
+                              .filter(m => m.length > 0); // 過濾走空嘅格仔
 
-    const membersArray = membersRaw.split(',').map(m => m.trim()).filter(m => m.length > 0);
+    if (membersArray.length === 0) { 
+        alert("手動起帳模式必須輸入至少一位旅伴名字！"); 
+        return; 
+    }
+
     const newCode = generateSecureTripCode();
 
     try {
@@ -265,6 +309,7 @@ function exitToPortal() {
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('portal-screen').classList.remove('hidden');
     document.body.className = "p-4 md:p-8 flex items-center justify-center min-h-screen";
+    initDefaultMemberRows();
 }
 
 function showError(id) {
