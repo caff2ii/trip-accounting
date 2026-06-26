@@ -331,6 +331,9 @@ function enterDashboard(id, name, code, members) {
         payerSelect.appendChild(opt);
     });
     
+    // 🌟 核心修改：生成手動記帳的進階分帳旅伴輸入格
+    renderManualMemberFields();
+
     document.getElementById('portal-screen').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
     document.body.className = "p-4 md:p-8"; 
@@ -388,20 +391,60 @@ async function handleFormSubmit(e) {
     const shopback_saved_aud = amount_in_aud * (shopback_pct / 100);
     const net_amount_aud = amount_in_aud - shopback_saved_aud;
 
-    // 建立預設的手動記帳分帳 JSONB 結構
+    // 🌟 核心修改：動態撈取前端輸入的進階分帳細節
     let paid_detail = {};
-    paid_detail[payer] = amount; // 預設由單一付款人支付全額
+    let split_detail = {};
+    let totalCustomPaid = 0;
+    let totalCustomSplit = 0;
+    let has_custom_split = false;
+    let primaryPayer = payer;
 
-    let split_detail = {}; // 留空表示渲染時走全體均分邏輯
+    const splitRows = document.querySelectorAll('.member-split-row');
+    splitRows.forEach(row => {
+        const m = row.dataset.member;
+        const paidVal = parseFloat(row.querySelector('.member-paid-input').value) || 0;
+        const splitVal = parseFloat(row.querySelector('.member-split-input').value) || 0;
+
+        if (paidVal > 0) {
+            paid_detail[m] = paidVal;
+            totalCustomPaid += paidVal;
+        }
+        if (splitVal > 0) {
+            split_detail[m] = splitVal;
+            totalCustomSplit += splitVal;
+        }
+    });
+
+    // 防呆防空機制
+    if (totalCustomPaid > 0) {
+        // 如果有填寫自訂代墊，找出出資最多的人當作主要付款人（以兼容明細表顯示）
+        let maxPaid = -1;
+        for (let m in paid_detail) {
+            if (paid_detail[m] > maxPaid) {
+                maxPaid = paid_detail[m];
+                primaryPayer = m;
+            }
+        }
+    } else {
+        // 如果完全留空，走預設：由上方選取的單一付款人全額支付
+        paid_detail[payer] = amount;
+    }
+
+    if (totalCustomSplit > 0) {
+        // 如果有填寫自訂分攤金額，將其標記為自訂拆帳
+        has_custom_split = true;
+    }
 
     const payload = { 
-        trip_id: currentTripId, date, name, amount, currency, category, payer, 
+        trip_id: currentTripId, date, name, amount, currency, category, payer: primaryPayer, 
         shopback_pct, rate, shopback_saved_aud, net_amount_aud, amount_in_aud, is_overridden,
-        split_detail, paid_detail, has_custom_split: false
+        split_detail, paid_detail, has_custom_split
     };
     
     await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { method: "POST", headers: headers, body: JSON.stringify(payload) });
+    
     this.reset();
+    renderManualMemberFields(); // 🌟 表單重設後，順便洗乾淨並重置進階分帳輸入格
     fetchDataFromSupabase();
 }
 
@@ -579,5 +622,33 @@ function renderChart(catData) {
             datasets: [{ data: Object.values(catData), backgroundColor: ['#f97316', '#10b981', '#0ea5e9', '#3b82f6', '#a855f7', '#ec4899', '#6366f1', '#ef4444', '#64748b'], borderWidth: 1, borderColor: '#1e293b' }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 12 } } } }
+    });
+}
+
+// 🌟 新增：手動記帳面板中，動態生成各成員的進階自訂拆帳及出資輸入格
+function renderManualMemberFields() {
+    const container = document.getElementById('manual-member-details-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!currentMembers || currentMembers.length === 0) return;
+
+    // 生成精簡標題欄
+    const headerRow = document.createElement('div');
+    headerRow.className = "grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-400 border-b border-slate-800 pb-1 text-center";
+    headerRow.innerHTML = `<div class="text-left">旅伴名字</div><div>出資 (代墊)</div><div>分攤 (應付)</div>`;
+    container.appendChild(headerRow);
+
+    // 為每位成員生成對應的一列輸入格
+    currentMembers.forEach(m => {
+        const row = document.createElement('div');
+        row.className = "grid grid-cols-3 gap-2 items-center member-split-row py-0.5";
+        row.dataset.member = m;
+        row.innerHTML = `
+            <span class="text-xs text-slate-300 truncate font-medium">${m}</span>
+            <input type="number" step="0.01" placeholder="全付則留空" class="member-paid-input bg-slate-950 border border-slate-700 rounded p-1 text-xs text-white text-center focus:border-sky-500 focus:outline-none">
+            <input type="number" step="0.01" placeholder="平分則留空" class="member-split-input bg-slate-950 border border-slate-700 rounded p-1 text-xs text-white text-center focus:border-sky-500 focus:outline-none">
+        `;
+        container.appendChild(row);
     });
 }
