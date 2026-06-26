@@ -39,13 +39,16 @@
             </div>
 
             <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800/80 space-y-2">
-                <div class="text-[11px] font-bold text-amber-400 flex items-center gap-1">📍 方法 1：無 CSV 狀況下人手起帳</div>
-                <input type="text" id="input-new-trip-members" placeholder="請輸入旅伴名字，用英文逗號隔開 (如: Apple, Bunny, Cat)" class="w-full text-xs bg-slate-950 border border-slate-700 rounded p-1.5 text-white focus:outline-none">
+                <div class="text-[11px] font-bold text-amber-400 flex items-center gap-1">📍 手動輸入人名</div>
+                <div id="members-input-container" class="space-y-2"></div>
+                <button type="button" id="btn-add-member-row" class="w-full text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 py-1.5 rounded flex items-center justify-center gap-1 transition-colors cursor-pointer">
+                    ➕ 新增旅伴欄位
+                </button>
                 <button id="btn-create-trip" class="w-full bg-emerald-600 hover:bg-emerald-500 text-xs font-bold py-1.5 rounded text-white transition-colors">人手配置名單並生成 Code</button>
             </div>
 
             <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800/80 text-center space-y-2">
-                <div class="text-[11px] font-bold text-sky-400 text-left flex items-center gap-1">⚡️ 方法 2：已有 CSV 檔案（智能全自動）</div>
+                <div class="text-[11px] font-bold text-sky-400 text-left flex items-center gap-1">⚡️ 自動分析CSV檔案（Shareroo）</div>
                 <p class="text-[10px] text-slate-400 text-left">系統會自動解剖 CSV 第一行，抽取人名作成員，並全自動倒開支上雲端！</p>
                 <label class="w-full bg-sky-600 hover:bg-sky-500 text-xs font-bold py-2 px-4 rounded text-white transition-colors shadow block cursor-pointer">
                     🚀 直接上載並解鎖
