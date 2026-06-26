@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>✈️ 雲端隨身記帳多人同步系統 v10</title>
+    <title>✈️ 雲端隨身記帳多人同步系統 v15</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="config.js"></script>
@@ -95,7 +95,7 @@
                 <form id="expense-form" class="space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-slate-300 mb-1">消費日期</label>
-                        <select id="exp-date" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none"></select>
+                        <input type="date" id="exp-date" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none [&::-webkit-calendar-picker-indicator]:invert">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-slate-300 mb-1">項目名稱</label>
