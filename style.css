@@ -1,0 +1,25 @@
+/* 全域底色與基本字型設定 */
+body {
+    background-color: #0f172a; /* Slate 900 */
+    color: #f8fafc;            /* Slate 50 */
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* 客製化流水帳表格的滾動條 (Scrollbar)，等佢同深色主題融為一體 */
+.overflow-x-auto::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+    background: #334155; /* Slate 700 */
+    border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+    background: #475569; /* Slate 600 */
+}
