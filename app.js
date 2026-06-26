@@ -322,7 +322,8 @@ function showError(id) {
 // ==========================================
 async function fetchDataFromSupabase() {
     try {
-        const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}&select=*&order=date.asc,id.asc`, { method: "GET", headers: headers });
+        // 🌟 重點：在 URL 中加入了 &is_deleted=eq.false，只撈出未被刪除的帳目
+        const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}&is_deleted=eq.false&select=*&order=date.asc,id.asc`, { method: "GET", headers: headers });
         expenses = await res.json();
         renderAll();
     } catch (err) { console.error(err); }
@@ -358,7 +359,12 @@ async function handleFormSubmit(e) {
 
 async function deleteItem(id) {
     if(confirm("確定要刪除此筆雲端開支嗎？")) {
-        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${id}`, { method: "DELETE", headers: headers });
+        // 🌟 改變策略：method 轉為 PATCH，並加上 body 傳入狀態
+        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${id}`, { 
+            method: "PATCH", 
+            headers: headers,
+            body: JSON.stringify({ is_deleted: true }) 
+        });
         fetchDataFromSupabase();
     }
 }
@@ -385,7 +391,12 @@ function handleCsvImport(e) {
 
 async function clearCurrentTripData() {
     if(confirm('⚠️ 警告：這將會直接清空「當前旅程」在雲端的所有明細！確定嗎？')) {
-        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}`, { method: "DELETE", headers: headers });
+        // 🌟 批次更新：把該旅程所有 expenses 的 is_deleted 全改成 true
+        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}`, { 
+            method: "PATCH", 
+            headers: headers,
+            body: JSON.stringify({ is_deleted: true })
+        });
         fetchDataFromSupabase();
     }
 }
