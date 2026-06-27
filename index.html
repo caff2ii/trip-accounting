@@ -166,8 +166,15 @@
                         <p class="text-[10px] text-slate-400 leading-normal">（選填。若全部留空，系統會自動按上方選取的「付款人全付」及「全團旅伴平分」自動處理）</p>
                         <div id="manual-member-details-container" class="space-y-2 pt-1"></div>
                     </div>
-
-                    <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded mt-2 cursor-pointer transition-colors">儲存至雲端資料庫</button>
+                    <!-- ✅ 修改後的並排按鈕結構 -->
+                    <div class="flex gap-2 mt-4">
+                        <button type="submit" id="btn-save-expense" class="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded cursor-pointer transition-colors text-sm">
+                            儲存至雲端資料庫
+                        </button>
+                        <button type="button" id="btn-cancel-edit" class="hidden bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium py-2 px-4 rounded cursor-pointer transition-colors text-sm">
+                            取消
+                        </button>
+                    </div>
                 </form>
             </div>
 
