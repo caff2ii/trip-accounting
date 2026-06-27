@@ -208,15 +208,14 @@
                         <table class="w-full text-left text-sm text-slate-300">
                             <thead class="bg-slate-900 text-slate-400 uppercase text-xs sticky top-0">
                                 <tr>
-                                    <th class="p-3">日期</th>
-                                    <th class="p-3">項目備註</th>
-                                    <th class="p-3">類別</th>
-                                    <th class="p-3">原始金額</th>
-                                    <th class="p-3">基礎 / 覆寫</th>
-                                    <th class="p-3">ShopBack</th>
-                                    <!-- ✅ ID 已清洗：表格標頭折實注入 base-currency-label -->
-                                    <th class="p-3">折實 (<span class="base-currency-label">---</span>)</th>
-                                    <th class="p-3">付款人</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="date">日期 ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="name">項目備註 ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="category">類別 ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="amount">原始金額 ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="rate">基礎 / 覆寫 ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="shopback_pct">ShopBack ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="net_amount_base">折實 (<span class="base-currency-label">---</span>) ⇅</th>
+                                    <th class="p-3 cursor-pointer hover:text-white select-none" data-sort="payer">付款人 ⇅</th>
                                     <th class="p-3">操作</th>
                                 </tr>
                             </thead>
