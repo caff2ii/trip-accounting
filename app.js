@@ -178,6 +178,12 @@ function bindEvents() {
     document.getElementById('btn-add-member-row').addEventListener('click', () => addMemberInputRow());
 
     initDefaultMemberRows();
+
+    // 在 bindEvents() 的最後加上這段
+    const thElements = document.querySelectorAll('#main-app table thead th[data-sort]');
+    thElements.forEach(th => {
+        th.addEventListener('click', () => handleTableSort(th));
+    });
 }
 
 function initDefaultMemberRows() {
@@ -973,4 +979,64 @@ function splitCsvLine(line) {
     }
     result.push(current.trim().replace(/^"|"$/g, ''));
     return result;
+}
+
+// 全域變數記錄當前排序欄位與方向
+let currentSortKey = null;
+let isAscending = true;
+
+function handleTableSort(clickedTh) {
+    const sortKey = clickedTh.getAttribute('data-sort');
+    
+    // 如果點擊同一個欄位，就切換升降序 (Toggle)；如果新欄位，預設升序
+    if (currentSortKey === sortKey) {
+        isAscending = !isAscending;
+    } else {
+        currentSortKey = sortKey;
+        isAscending = true;
+    }
+
+    // 更新畫面上的箭頭視覺提示 (選填，體驗更好)
+    document.querySelectorAll('#main-app table thead th[data-sort]').forEach(th => {
+        let baseText = th.textContent.replace(/[▲▼⇅]/g, '').trim();
+        if (th === clickedTh) {
+            th.textContent = baseText + (isAscending ? ' ▲' : ' ▼');
+            th.classList.add('text-sky-400');
+        } else {
+            th.textContent = baseText + ' ⇅';
+            th.classList.remove('text-sky-400');
+        }
+    });
+
+    // 針對複合或特殊欄位進行高精確度排序
+    expenses.sort((a, b) => {
+        let valA, valB;
+
+        switch (sortKey) {
+            case 'amount':
+            case 'shopback_pct':
+            case 'rate':
+                valA = parseFloat(a[sortKey]) || 0;
+                valB = parseFloat(b[sortKey]) || 0;
+                break;
+            case 'net_amount_base':
+                // 完美兼容你代碼中的高精度折實算法變數
+                valA = a.net_amount_base !== undefined ? a.net_amount_base : (a.net_amount_aud || 0);
+                valB = b.net_amount_base !== undefined ? b.net_amount_base : (b.net_amount_aud || 0);
+                break;
+            default:
+                // 字串類別（日期、項目備註、類別、付款人）使用本地化字串比對
+                valA = (a[sortKey] || '').toString();
+                valB = (b[sortKey] || '').toString();
+                return isAscending ? valA.localeCompare(valB, 'zh-Hant') : valB.localeCompare(valA, 'zh-Hant');
+        }
+
+        // 數字排序返回
+        if (valA < valB) return isAscending ? -1 : 1;
+        if (valA > valB) return isAscending ? 1 : -1;
+        return 0;
+    });
+
+    // 重新驅動你原有的渲染引擎，即時更新畫面！
+    renderAll();
 }
