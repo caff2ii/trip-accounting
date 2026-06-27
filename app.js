@@ -1,5 +1,5 @@
 // ==========================================
-// 📦 全域變數與全球貨幣數據庫
+// 📦 全域變數與全球貨幣數據庫 (做法 A 完美實作)
 // ==========================================
 const exchangeRates = {
     "2026-05-09": 0.8220, "2026-05-10": 0.8225, "2026-05-11": 0.8223, "2026-05-12": 0.8230,
@@ -9,25 +9,47 @@ const exchangeRates = {
     "2026-05-25": 0.8204, "2026-06-21": 0.8200
 };
 
-// 🌐 核心升級：全球貨幣配置庫
-const globalCurrencyStore = {
-    "AUD": { symbol: "$", name: "AUD - 澳大利亞元 (澳幣)" },
-    "NZD": { symbol: "$", name: "NZD - 紐西蘭元 (紐幣)" },
-    "HKD": { symbol: "$", name: "HKD - 香港港元 (港幣)" },
-    "USD": { symbol: "$", name: "USD - 美國美金 (美金)" },
-    "EUR": { symbol: "€", name: "EUR - 歐盟歐元 (歐元)" },
-    "JPY": { symbol: "¥", name: "JPY - 日本日圓 (日圓)" },
-    "GBP": { symbol: "£", name: "GBP - 英國英鎊 (英鎊)" },
-    "CAD": { symbol: "$", name: "CAD - 加拿大元 (加幣)" },
-    "SGD": { symbol: "$", name: "SGD - 新加坡元 (新幣)" }
-};
+// 🌍 做法 A：全球熱門與主流旅遊貨幣全收錄清單
+const currencyList = [
+    // 🔥 超級熱門置頂
+    { code: "AUD", name: "澳洲元", flag: "🇦🇺", popular: true },
+    { code: "HKD", name: "港幣", flag: "🇭🇰", popular: true },
+    { code: "NZD", name: "紐西蘭元", flag: "🇳🇿", popular: true },
+    { code: "JPY", name: "日圓", flag: "🇯🇵", popular: true },
+    { code: "TWD", name: "新台幣", flag: "🇹🇼", popular: true },
+    { code: "KRW", name: "韓圓", flag: "🇰🇷", popular: true },
+    { code: "THB", name: "泰銖", flag: "🇹🇭", popular: true },
+    
+    // 亞洲及東南亞鄰近地區
+    { code: "SGD", name: "新加坡元", flag: "🇸🇬" },
+    { code: "MYR", name: "馬來西亞林吉特", flag: "🇲🇾" },
+    { code: "IDR", name: "印尼盾", flag: "🇮🇩" },
+    { code: "PHP", name: "菲律賓比索", flag: "🇵🇭" },
+    { code: "VND", name: "越南盾", flag: "🇻🇳" },
+    { code: "CNY", name: "人民幣", flag: "🇨🇳" },
+    { code: "MOP", name: "澳門幣", flag: "🇲🇴" },
+    
+    // 歐美及其他熱門旅遊區
+    { code: "USD", name: "美金", flag: "🇺🇸" },
+    { code: "EUR", name: "歐羅", flag: "🇪🇺" },
+    { code: "GBP", name: "英鎊", flag: "🇬🇧" },
+    { code: "CAD", name: "加拿大元", flag: "🇨🇦" },
+    { code: "CHF", name: "瑞士法郎", flag: "🇨🇭" },
+    { code: "SEK", name: "瑞典克朗", flag: "🇸🇪" },
+    { code: "NOK", name: "挪威克朗", flag: "🇳🇴" },
+    { code: "DKK", name: "丹麥克朗", flag: "🇩🇰" },
+    { code: "ISK", name: "冰島克朗", flag: "🇮🇸" },
+    { code: "AED", name: "阿聯酋迪拉姆", flag: "🇦🇪" },
+    { code: "ZAR", name: "南非蘭特", flag: "🇿🇦" },
+    { code: "TRY", name: "土耳其里拉", flag: "🇹🇷" }
+];
 
 let expenses = [];
 let myChart = null;
 let currentTripId = null; 
 let currentTripCode = "";
 let currentMembers = []; 
-let currentTripBaseCurrency = "AUD"; // 鎖定當前旅程的自訂本位幣
+let currentTripBaseCurrency = "AUD"; 
 let editingExpenseId = null; 
 
 const headers = {
@@ -40,12 +62,12 @@ const headers = {
 // 🚀 頁面初始化
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-    populateCurrencyDropdowns(); // 🌟 實作：動態注入全球貨幣選單
+    populateCurrencyDropdowns(); // 動態注入做法 A 清單
     setDefaultDate(); 
     bindEvents();
 });
 
-// 🌟 實作：動態渲染智能貨幣下拉選單與 DOM 同步
+// 🌟 實作：依照「做法 A」結構動態渲染智能貨幣選單 (帶有國旗)
 function populateCurrencyDropdowns() {
     const newTripBaseSelect = document.getElementById('input-new-trip-base');
     const expCurrencySelect = document.getElementById('exp-currency');
@@ -53,25 +75,25 @@ function populateCurrencyDropdowns() {
     // 渲染「建立旅程」本位幣選單
     if (newTripBaseSelect) {
         newTripBaseSelect.innerHTML = '';
-        Object.keys(globalCurrencyStore).forEach(code => {
+        currencyList.forEach(c => {
             let opt = document.createElement('option');
-            opt.value = code;
-            opt.textContent = globalCurrencyStore[code].name;
+            opt.value = c.code;
+            opt.textContent = `${c.flag} ${c.code} - ${c.name}`;
             newTripBaseSelect.appendChild(opt);
         });
-        newTripBaseSelect.value = "AUD"; // 預設為常用澳幣
+        newTripBaseSelect.value = "AUD"; 
     }
 
     // 渲染「新增開支」消費幣別選單
     if (expCurrencySelect) {
         expCurrencySelect.innerHTML = '';
-        Object.keys(globalCurrencyStore).forEach(code => {
+        currencyList.forEach(c => {
             let opt = document.createElement('option');
-            opt.value = code;
-            opt.textContent = globalCurrencyStore[code].name;
+            opt.value = c.code;
+            opt.textContent = `${c.flag} ${c.code} - ${c.name}`;
             expCurrencySelect.appendChild(opt);
         });
-        expCurrencySelect.value = "NZD"; // 預設為消費紐幣
+        expCurrencySelect.value = "NZD"; 
     }
 }
 
@@ -363,7 +385,7 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     document.getElementById('trip-members-display').textContent = `旅伴成員: ${currentMembers.join(', ')} (${currentMembers.length} 人)`;
     document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (${currentTripBaseCurrency})`;
 
-    // 🌟 實作同步：自動切換開支表單的幣別預設值為「該旅程本位幣」
+    // 🌟 實作同步：自動切換開支表單的幣別預設值為「該旅程自訂本位幣」
     const expCurrencySelect = document.getElementById('exp-currency');
     if (expCurrencySelect) {
         expCurrencySelect.value = currentTripBaseCurrency;
@@ -386,7 +408,7 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     fetchDataFromSupabase();
 }
 
-// 重置表單狀態
+// ⚖️ 完美對接：重置表單狀態
 function resetFormState() {
     editingExpenseId = null;
     const form = document.getElementById('expense-form');
@@ -462,7 +484,7 @@ async function handleFormSubmit(e) {
     let rate = 1.0;
     const tripBase = currentTripBaseCurrency || "AUD";
 
-    // 🌟 全球貨幣驅動核心：高防禦性動態匯率解析
+    // 全球貨幣高防禦性動態匯率解析
     if (currency !== tripBase) {
         if (tripBase === "AUD" && currency === "NZD" && exchangeRates && exchangeRates[date]) {
             rate = exchangeRates[date];
@@ -867,19 +889,14 @@ function editItem(id) {
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
 
-// 自動格式化日期 D/M/YYYY -> YYYY-MM-DD
 function formatToIsoDate(dateStr) {
     if (!dateStr) return "2026-05-14"; 
     dateStr = dateStr.trim();
-    
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        return dateStr;
-    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
     
     const parts = dateStr.split(/[\/\-]/);
     if (parts.length === 3) {
         let day, month, year;
-        
         if (parts[0].length === 4) { 
             year = parts[0]; month = parts[1]; day = parts[2];
         } else if (parts[2].length === 4) { 
@@ -887,16 +904,11 @@ function formatToIsoDate(dateStr) {
         } else {
             return "2026-05-14";
         }
-        
-        const formattedMonth = month.padStart(2, '0');
-        const formattedDay = day.padStart(2, '0');
-        
-        return `${year}-${formattedMonth}-${formattedDay}`;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
     return "2026-05-14";
 }
 
-// 安全拆解 CSV 行
 function splitCsvLine(line) {
     const result = [];
     let current = '';
