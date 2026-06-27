@@ -1,5 +1,5 @@
 // ==========================================
-// 📦 全域變數與固定數據
+// 📦 全域變數與全球貨幣數據庫
 // ==========================================
 const exchangeRates = {
     "2026-05-09": 0.8220, "2026-05-10": 0.8225, "2026-05-11": 0.8223, "2026-05-12": 0.8230,
@@ -9,12 +9,25 @@ const exchangeRates = {
     "2026-05-25": 0.8204, "2026-06-21": 0.8200
 };
 
+// 🌐 核心升級：全球貨幣配置庫
+const globalCurrencyStore = {
+    "AUD": { symbol: "$", name: "AUD - 澳大利亞元 (澳幣)" },
+    "NZD": { symbol: "$", name: "NZD - 紐西蘭元 (紐幣)" },
+    "HKD": { symbol: "$", name: "HKD - 香港港元 (港幣)" },
+    "USD": { symbol: "$", name: "USD - 美國美金 (美金)" },
+    "EUR": { symbol: "€", name: "EUR - 歐盟歐元 (歐元)" },
+    "JPY": { symbol: "¥", name: "JPY - 日本日圓 (日圓)" },
+    "GBP": { symbol: "£", name: "GBP - 英國英鎊 (英鎊)" },
+    "CAD": { symbol: "$", name: "CAD - 加拿大元 (加幣)" },
+    "SGD": { symbol: "$", name: "SGD - 新加坡元 (新幣)" }
+};
+
 let expenses = [];
 let myChart = null;
 let currentTripId = null; 
 let currentTripCode = "";
 let currentMembers = []; 
-let currentTripBaseCurrency = "AUD"; // 🌟 鎖定當前旅程的自訂本位幣 (例如 AUD, HKD 等)
+let currentTripBaseCurrency = "AUD"; // 鎖定當前旅程的自訂本位幣
 let editingExpenseId = null; 
 
 const headers = {
@@ -27,11 +40,42 @@ const headers = {
 // 🚀 頁面初始化
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
-    setDefaultDate(); // 🌟 抽取成獨立函數，方便重用
+    populateCurrencyDropdowns(); // 🌟 實作：動態注入全球貨幣選單
+    setDefaultDate(); 
     bindEvents();
 });
 
-// 🌟 新增：統一設定當前本地日期的預設值
+// 🌟 實作：動態渲染智能貨幣下拉選單與 DOM 同步
+function populateCurrencyDropdowns() {
+    const newTripBaseSelect = document.getElementById('input-new-trip-base');
+    const expCurrencySelect = document.getElementById('exp-currency');
+
+    // 渲染「建立旅程」本位幣選單
+    if (newTripBaseSelect) {
+        newTripBaseSelect.innerHTML = '';
+        Object.keys(globalCurrencyStore).forEach(code => {
+            let opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = globalCurrencyStore[code].name;
+            newTripBaseSelect.appendChild(opt);
+        });
+        newTripBaseSelect.value = "AUD"; // 預設為常用澳幣
+    }
+
+    // 渲染「新增開支」消費幣別選單
+    if (expCurrencySelect) {
+        expCurrencySelect.innerHTML = '';
+        Object.keys(globalCurrencyStore).forEach(code => {
+            let opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = globalCurrencyStore[code].name;
+            expCurrencySelect.appendChild(opt);
+        });
+        expCurrencySelect.value = "NZD"; // 預設為消費紐幣
+    }
+}
+
+// 統一設定當前本地日期的預設值
 function setDefaultDate() {
     const dateInput = document.getElementById('exp-date');
     if (dateInput) {
@@ -75,7 +119,7 @@ function initDefaultMemberRows() {
     const container = document.getElementById('members-input-container');
     if (!container) return;
     container.innerHTML = ''; 
-    addMemberInputRow(""); // ✅ 依照指令：保留原樣生成 1 格
+    addMemberInputRow(""); 
 }
 
 function addMemberInputRow(value = "") {
@@ -120,7 +164,7 @@ async function loadExistingTrip() {
     } catch (err) { alert("無法連線資料庫"); }
 }
 
-// 軌道 1：手動建立旅程
+// 建立新旅程（手動）
 async function createNewTripManual() {
     const name = document.getElementById('input-new-trip-name').value.trim() || "未命名新旅程";
     const inputs = document.querySelectorAll('#members-input-container input');
@@ -147,7 +191,7 @@ async function createNewTripManual() {
     } catch (err) { alert("建立旅程失敗！"); }
 }
 
-// 軌道 2：CSV 魔法全自動解析建 Trip
+// CSV 全自動智能建立 Trip 
 function handlePortalCsvMagic(e) {
     const file = e.target.files[0]; if (!file) return;
     const userTripName = document.getElementById('input-new-trip-name').value.trim();
@@ -158,7 +202,7 @@ function handlePortalCsvMagic(e) {
         const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length < 2) { alert("CSV 數據量不足"); return; }
 
-        const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const csvHeaders = splitCsvLine(lines[0]);
         let extractedMembers = new Set();
         const startIndex = csvHeaders.indexOf("分攤");
         const endIndex = csvHeaders.indexOf("代墊");
@@ -171,8 +215,8 @@ function handlePortalCsvMagic(e) {
 
         const payerColIdx = csvHeaders.indexOf('支出的人');
         if (payerColIdx !== -1) {
-            for (let i = 1; i < lines.length - 1; i++) {
-                const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+            for (let i = 1; i < lines.length; i++) {
+                const cols = splitCsvLine(lines[i]);
                 if (cols[payerColIdx]) extractedMembers.add(cols[payerColIdx]);
             }
         }
@@ -198,21 +242,18 @@ function handlePortalCsvMagic(e) {
             let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, finalMembers, newTripId, tripBase);
 
             if (bulkPayload.length > 0) {
-                // ✅ 加上 const resExp = 成功接收 fetch 的回傳狀態
                 const resExp = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
                     method: "POST", 
                     headers: { ...headers, "Prefer": "return=minimal" }, 
                     body: JSON.stringify(bulkPayload)
                 });
                 
-                // 檢查後端是否報錯
                 if (!resExp.ok) {
                     const errorText = await resExp.text();
                     throw new Error(`資料庫寫入失敗: ${errorText}`);
                 }
             }
 
-            // 🎉 真正的大團圓結局！
             alert(`🎉 魔法解鎖成功！自動偵測旅伴：[${finalMembers.join(', ')}]，並已上載 ${bulkPayload.length} 筆帳目！`);
             showSuccessModal(newTripId, tripData[0].trip_name, tripData[0].passcode, finalMembers, tripBase);
 
@@ -223,15 +264,15 @@ function handlePortalCsvMagic(e) {
     reader.readAsText(file, 'UTF-8');
 }
 
-// CSV 行數轉換器
+// CSV 解析核心
 function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId, tripBase = "AUD") {
     let payload = [];
     const splitStartIdx = csvHeaders.indexOf('分攤');
     const advanceStartIdx = csvHeaders.indexOf('代墊');
     
-    for (let i = 1; i < lines.length - 1; i++) {
+    for (let i = 1; i < lines.length; i++) { 
         if (!lines[i].trim()) continue;
-        const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        const cols = splitCsvLine(lines[i]);
         if (cols.length < csvHeaders.length) continue;
         let row = {}; csvHeaders.forEach((h, idx) => { row[h] = cols[idx]; });
 
@@ -322,6 +363,12 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     document.getElementById('trip-members-display').textContent = `旅伴成員: ${currentMembers.join(', ')} (${currentMembers.length} 人)`;
     document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (${currentTripBaseCurrency})`;
 
+    // 🌟 實作同步：自動切換開支表單的幣別預設值為「該旅程本位幣」
+    const expCurrencySelect = document.getElementById('exp-currency');
+    if (expCurrencySelect) {
+        expCurrencySelect.value = currentTripBaseCurrency;
+    }
+
     const payerSelect = document.getElementById('exp-payer');
     payerSelect.innerHTML = '';
     currentMembers.forEach(m => {
@@ -339,14 +386,19 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     fetchDataFromSupabase();
 }
 
-// 🌟 修正 2：重置表單狀態工具（補回防呆：重置後自動塞回今日日期）
+// 重置表單狀態
 function resetFormState() {
     editingExpenseId = null;
     const form = document.getElementById('expense-form');
     if (form) form.reset();
     
-    // 💡 修正關鍵：reset() 會清空日期，這裡重新呼叫寫入今日日期，免得用家重複填寫
     setDefaultDate(); 
+
+    // 🌟 同步：重置表單時確保幣別切回當前旅程的本位幣
+    const expCurrencySelect = document.getElementById('exp-currency');
+    if (expCurrencySelect) {
+        expCurrencySelect.value = currentTripBaseCurrency;
+    }
 
     const submitBtn = document.querySelector('#expense-form button[type="submit"]');
     if (submitBtn) submitBtn.textContent = "➕ 新增此筆開支";
@@ -385,7 +437,7 @@ function showError(id) {
 }
 
 // ==========================================
-// 📊 Supabase 資料庫數據增刪查改
+// 📊 Supabase 數據查改與跨幣別高精度處理
 // ==========================================
 async function fetchDataFromSupabase() {
     try {
@@ -410,6 +462,7 @@ async function handleFormSubmit(e) {
     let rate = 1.0;
     const tripBase = currentTripBaseCurrency || "AUD";
 
+    // 🌟 全球貨幣驅動核心：高防禦性動態匯率解析
     if (currency !== tripBase) {
         if (tripBase === "AUD" && currency === "NZD" && exchangeRates && exchangeRates[date]) {
             rate = exchangeRates[date];
@@ -486,18 +539,29 @@ async function handleFormSubmit(e) {
         split_detail, paid_detail, has_custom_split
     };
     
-    if (editingExpenseId) {
-        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${editingExpenseId}`, { 
-            method: "PATCH", headers: headers, body: JSON.stringify(payload) 
-        });
-    } else {
-        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { 
-            method: "POST", headers: headers, body: JSON.stringify(payload) 
-        });
+    try { 
+        let resExp;
+        if (editingExpenseId) {
+            resExp = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${editingExpenseId}`, { 
+                method: "PATCH", headers: headers, body: JSON.stringify(payload) 
+            });
+        } else {
+            resExp = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { 
+                method: "POST", headers: headers, body: JSON.stringify(payload) 
+            });
+        }
+        
+        if (!resExp.ok) {
+            const errorText = await resExp.text();
+            throw new Error(`資料庫寫入失敗: ${errorText}`);
+        }
+        
+        resetFormState();
+        fetchDataFromSupabase();
+    } catch (err) {
+        console.error("Form Submit Error:", err);
+        alert("❌ 儲存開支失敗！請確認網路連線或資料庫狀態正常。");
     }
-    
-    resetFormState();
-    fetchDataFromSupabase();
 }
 
 async function deleteItem(id) {
@@ -510,18 +574,17 @@ async function deleteItem(id) {
     }
 }
 
-// 🌟 修正 3 & 5：內頁追加匯入 CSV（補上 try...catch 機制與彈窗提示防禦）
 function handleCsvImport(e) {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = async function(evt) {
-        try { // 💡 修正關鍵：防禦非預期 CSV 格式或網路錯誤造成程式中斷
+        try { 
             const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
             if (lines.length < 2) {
                 alert("❌ CSV 數據量不足，無法解析。");
                 return;
             }
-            const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            const csvHeaders = splitCsvLine(lines[0]);
             
             let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, currentMembers, currentTripId, currentTripBaseCurrency);
 
@@ -641,7 +704,7 @@ function renderAll() {
             <td class="p-3">
                 <button onclick="editItem(${exp.id})" class="text-sky-400 hover:text-sky-300 font-medium transition-colors cursor-pointer">編輯</button>
             </td>
-        `; // ✅ 依照指令：保留原樣，明細表不放置刪除按鈕
+        `; 
         tbody.appendChild(row);
     });
 
@@ -804,34 +867,51 @@ function editItem(id) {
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
 
-// 自動將 D/M/YYYY 或其他格式安全轉換為 YYYY-MM-DD
+// 自動格式化日期 D/M/YYYY -> YYYY-MM-DD
 function formatToIsoDate(dateStr) {
-    if (!dateStr) return "2026-05-14"; // 預設防呆備用日期
+    if (!dateStr) return "2026-05-14"; 
     dateStr = dateStr.trim();
     
-    // 如果本來就已經是 YYYY-MM-DD 格式則直接回傳
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
         return dateStr;
     }
     
-    // 依據斜線或橫線拆解
     const parts = dateStr.split(/[\/\-]/);
     if (parts.length === 3) {
         let day, month, year;
         
-        if (parts[0].length === 4) { // YYYY/MM/DD
+        if (parts[0].length === 4) { 
             year = parts[0]; month = parts[1]; day = parts[2];
-        } else if (parts[2].length === 4) { // D/M/YYYY
+        } else if (parts[2].length === 4) { 
             day = parts[0]; month = parts[1]; year = parts[2];
         } else {
             return "2026-05-14";
         }
         
-        // 自動補 0 (例如 5 -> 05)
         const formattedMonth = month.padStart(2, '0');
         const formattedDay = day.padStart(2, '0');
         
         return `${year}-${formattedMonth}-${formattedDay}`;
     }
     return "2026-05-14";
+}
+
+// 安全拆解 CSV 行
+function splitCsvLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim().replace(/^"|"$/g, ''));
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current.trim().replace(/^"|"$/g, ''));
+    return result;
 }
