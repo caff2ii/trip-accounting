@@ -427,6 +427,10 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     document.getElementById('trip-code-badge').textContent = `CODE: ${code} (${currentTripBaseCurrency})`;
     document.getElementById('trip-members-display').textContent = `旅伴成員: ${currentMembers.join(', ')} (${currentMembers.length} 人)`;
     document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (${currentTripBaseCurrency})`;
+    // 💡 全自動捕捉畫面上所有 class 為 base-currency-label 嘅標籤，並將 --- 替換為當前本位幣 (例如 HKD)
+    document.querySelectorAll('.base-currency-label').forEach(el => {
+        el.textContent = currentTripBaseCurrency;
+    });
 
     // 🌟 實作同步：自動切換開支表單的幣別預設值為「該旅程自訂本位幣」
     const expCurrencySelect = document.getElementById('exp-currency');
