@@ -14,7 +14,8 @@ let myChart = null;
 let currentTripId = null; 
 let currentTripCode = "";
 let currentMembers = []; 
-let editingExpenseId = null; // 🌟 新增：用來記錄目前正在編輯哪一筆開支的 ID
+let currentTripBaseCurrency = "AUD"; // 🌟 鎖定當前旅程的自訂本位幣 (例如 AUD, HKD 等)
+let editingExpenseId = null; 
 
 const headers = {
     "apikey": SUPABASE_CONFIG.ANON_KEY,
@@ -26,18 +27,21 @@ const headers = {
 // 🚀 頁面初始化
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
+    setDefaultDate(); // 🌟 抽取成獨立函數，方便重用
+    bindEvents();
+});
+
+// 🌟 新增：統一設定當前本地日期的預設值
+function setDefaultDate() {
     const dateInput = document.getElementById('exp-date');
     if (dateInput) {
-        // 自動獲取當前本地日期的 YYYY-MM-DD 格式並設為預設值
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
-        
         dateInput.value = `${yyyy}-${mm}-${dd}`;
     }
-    bindEvents();
-});
+}
 
 // ==========================================
 // 🎛️ 事件監聽綁定
@@ -45,11 +49,11 @@ document.addEventListener("DOMContentLoaded", () => {
 function bindEvents() {
     document.getElementById('btn-load-trip').addEventListener('click', loadExistingTrip);
     document.getElementById('btn-create-trip').addEventListener('click', createNewTripManual);
-    document.getElementById('portal-csv-input').addEventListener('change', handlePortalCsvMagic); // 🌟 軌道 2 監聽
+    document.getElementById('portal-csv-input').addEventListener('change', handlePortalCsvMagic); 
 
     document.getElementById('btn-modal-enter').addEventListener('click', () => {
         document.getElementById('success-modal').classList.add('hidden');
-        enterDashboard(currentTripId, document.getElementById('trip-title-display').textContent, currentTripCode, currentMembers);
+        enterDashboard(currentTripId, document.getElementById('trip-title-display').textContent, currentTripCode, currentMembers, currentTripBaseCurrency);
     });
 
     document.getElementById('btn-copy-code').addEventListener('click', () => {
@@ -64,19 +68,16 @@ function bindEvents() {
     document.getElementById('btn-exit-to-portal').addEventListener('click', exitToPortal);
     document.getElementById('btn-add-member-row').addEventListener('click', () => addMemberInputRow());
 
-    // 網頁一開波，預設幫用家建好 3 格
     initDefaultMemberRows();
 }
 
-// 預設初始化格仔
 function initDefaultMemberRows() {
     const container = document.getElementById('members-input-container');
     if (!container) return;
-    container.innerHTML = ''; // 先清空
-    addMemberInputRow(""); // 留空一格俾佢哋自己填
+    container.innerHTML = ''; 
+    addMemberInputRow(""); // ✅ 依照指令：保留原樣生成 1 格
 }
 
-// 核心：每撳一次加號，就生一格帶有減號嘅 Input Row
 function addMemberInputRow(value = "") {
     const container = document.getElementById('members-input-container');
     const row = document.createElement('div');
@@ -87,9 +88,7 @@ function addMemberInputRow(value = "") {
         <button type="button" class="btn-remove-member-row bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 border border-rose-800/50 px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer">➖</button>
     `;
     
-    // 💡 綁定減號按鈕：撳一撳就將自己呢行長眠
     row.querySelector('.btn-remove-member-row').addEventListener('click', () => {
-        // 保留機制：唔好俾用家刪到一格都冇
         if (container.querySelectorAll('.member-input-row').length > 1) {
             row.remove();
         } else {
@@ -115,7 +114,8 @@ async function loadExistingTrip() {
         const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/trips?passcode=eq.${encodeURIComponent(inputCode)}&select=*`, { method: "GET", headers: headers });
         const data = await res.json();
         if (data && data.length > 0) {
-            enterDashboard(data[0].id, data[0].trip_name, data[0].passcode, data[0].members);
+            const baseCurr = data[0].base_currency || "AUD";
+            enterDashboard(data[0].id, data[0].trip_name, data[0].passcode, data[0].members, baseCurr);
         } else { showError('load-error'); }
     } catch (err) { alert("無法連線資料庫"); }
 }
@@ -123,12 +123,8 @@ async function loadExistingTrip() {
 // 軌道 1：手動建立旅程
 async function createNewTripManual() {
     const name = document.getElementById('input-new-trip-name').value.trim() || "未命名新旅程";
-    
-    // 🌟 核心修改：撈取全部一格格嘅 input 內容
     const inputs = document.querySelectorAll('#members-input-container input');
-    const membersArray = Array.from(inputs)
-                              .map(i => i.value.trim())
-                              .filter(m => m.length > 0); // 過濾走空嘅格仔
+    const membersArray = Array.from(inputs).map(i => i.value.trim()).filter(m => m.length > 0);
 
     if (membersArray.length === 0) { 
         alert("手動起帳模式必須輸入至少一位旅伴名字！"); 
@@ -136,41 +132,38 @@ async function createNewTripManual() {
     }
 
     const newCode = generateSecureTripCode();
+    const baseCurrencyInput = document.getElementById('input-new-trip-base');
+    const baseCurrency = baseCurrencyInput ? baseCurrencyInput.value : "AUD";
 
     try {
         const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/trips`, {
             method: "POST", headers: { ...headers, "Prefer": "return=representation" },
-            body: JSON.stringify({ trip_name: name, passcode: newCode, members: membersArray })
+            body: JSON.stringify({ trip_name: name, passcode: newCode, members: membersArray, base_currency: baseCurrency })
         });
         const data = await res.json();
         if (data && data.length > 0) {
-            showSuccessModal(data[0].id, data[0].trip_name, data[0].passcode, data[0].members);
+            showSuccessModal(data[0].id, data[0].trip_name, data[0].passcode, data[0].members, data[0].base_currency);
         }
     } catch (err) { alert("建立旅程失敗！"); }
 }
 
-// 🌟 軌道 2：CSV 魔法全自動解析建 Trip 核心算法
+// 軌道 2：CSV 魔法全自動解析建 Trip
 function handlePortalCsvMagic(e) {
     const file = e.target.files[0]; if (!file) return;
-    
     const userTripName = document.getElementById('input-new-trip-name').value.trim();
     const tripName = userTripName || file.name.replace(/\.[^/.]+$/, "");
 
     const reader = new FileReader();
     reader.onload = async function(evt) {
-        // 💡 修正 1：讀取時先過濾走所有空白行，確保 lines 陣列最後一個就是真正的「總計/最後一行」
         const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         if (lines.length < 2) { alert("CSV 數據量不足"); return; }
 
         const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        
         let extractedMembers = new Set();
         const startIndex = csvHeaders.indexOf("分攤");
         const endIndex = csvHeaders.indexOf("代墊");
         
         if (startIndex !== -1 && endIndex !== -1) {
-            // 💡 修正 2：既然你刪除了旅程欄位，將原先的 endIndex - 1 改回 endIndex！
-            // 咁樣就可以一路讀到「代墊」前一格，將 5 個人（Caff, Fanny, Simba, Eva, Leo）全數抓回！
             for (let i = startIndex + 1; i < endIndex; i++) {
                 if (csvHeaders[i]) extractedMembers.add(csvHeaders[i]);
             }
@@ -178,7 +171,6 @@ function handlePortalCsvMagic(e) {
 
         const payerColIdx = csvHeaders.indexOf('支出的人');
         if (payerColIdx !== -1) {
-            // 💡 修正 3：改成 lines.length - 1，確保巡查人名時自動略過最後一行的總計
             for (let i = 1; i < lines.length - 1; i++) {
                 const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
                 if (cols[payerColIdx]) extractedMembers.add(cols[payerColIdx]);
@@ -191,22 +183,20 @@ function handlePortalCsvMagic(e) {
             return;
         }
 
-        // 1. 同步向 Supabase 建立 Trip
         const newCode = generateSecureTripCode();
         try {
             let resTrip = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/trips`, {
                 method: "POST", headers: { ...headers, "Prefer": "return=representation" },
-                body: JSON.stringify({ trip_name: tripName, passcode: newCode, members: finalMembers })
+                body: JSON.stringify({ trip_name: tripName, passcode: newCode, members: finalMembers, base_currency: "AUD" })
             });
             let tripData = await resTrip.json();
             if (!tripData || tripData.length === 0) throw new Error("建程失敗");
 
             const newTripId = tripData[0].id;
+            const tripBase = tripData[0].base_currency || "AUD";
 
-            // 2. 轉化 CSV 數據並打包成 Payload
-            let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, finalMembers, newTripId);
+            let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, finalMembers, newTripId, tripBase);
 
-            // 3. 批量寫入雲端開支表
             if (bulkPayload.length > 0) {
                 await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
                     method: "POST", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(bulkPayload)
@@ -214,7 +204,7 @@ function handlePortalCsvMagic(e) {
             }
 
             alert(`🎉 魔法解鎖成功！自動偵測旅伴：[${finalMembers.join(', ')}]，並已上載 ${bulkPayload.length} 筆帳目！`);
-            showSuccessModal(newTripId, tripData[0].trip_name, tripData[0].passcode, finalMembers);
+            showSuccessModal(newTripId, tripData[0].trip_name, tripData[0].passcode, finalMembers, tripBase);
 
         } catch (err) {
             alert("CSV 智能建帳發生錯誤，請檢查資料庫連線。");
@@ -223,15 +213,12 @@ function handlePortalCsvMagic(e) {
     reader.readAsText(file, 'UTF-8');
 }
 
-// 提取共用的 CSV 行數轉換器
-function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
+// CSV 行數轉換器
+function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId, tripBase = "AUD") {
     let payload = [];
-    
     const splitStartIdx = csvHeaders.indexOf('分攤');
     const advanceStartIdx = csvHeaders.indexOf('代墊');
     
-    // 💡 修正 4：將 i < lines.length 改成 i < lines.length - 1
-    // 咁樣在打包帳目數據上載時，程式就會在最後一行的前一行自動停低，完全唔會讀埋總計行！
     for (let i = 1; i < lines.length - 1; i++) {
         if (!lines[i].trim()) continue;
         const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
@@ -290,39 +277,40 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId) {
             paid_detail[primaryPayer] = amount;
         }
 
-        let rate = exchangeRates[date] || 0.8200;
-        let amount_in_aud = amount * rate;
+        let rate = (tripBase === "AUD") ? (exchangeRates[date] || 0.8200) : 1.0;
+        let amount_in_base = amount * rate;
 
         payload.push({
             trip_id: tripId, date, name, amount, currency: 'NZD', category, payer: primaryPayer,
-            shopback_pct: 0, rate, shopback_saved_aud: 0, net_amount_aud: amount_in_aud, amount_in_aud, is_overridden: false,
+            shopback_pct: 0, rate, shopback_saved_base: 0, net_amount_base: amount_in_base, amount_in_base, is_overridden: false,
             split_detail, paid_detail, has_custom_split
         });
     }
     return payload;
 }
 
-function showSuccessModal(id, name, code, members) {
+function showSuccessModal(id, name, code, members, baseCurrency = "AUD") {
     document.getElementById('generated-code-display').textContent = code;
     document.getElementById('success-modal').classList.remove('hidden');
     currentTripId = id;
     currentTripCode = code;
     currentMembers = members || [];
+    currentTripBaseCurrency = baseCurrency; 
     document.getElementById('trip-title-display').textContent = name;
 }
 
-// 進入計帳主界面與動態 DOM 建構
-function enterDashboard(id, name, code, members) {
+// 進入計帳主界面
+function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     currentTripId = id;
     currentTripCode = code;
     currentMembers = members || [];
+    currentTripBaseCurrency = baseCurrency; 
     
     document.getElementById('trip-title-display').textContent = name.startsWith('✈️') ? name : `✈️ ${name}`;
-    document.getElementById('trip-code-badge').textContent = `CODE: ${code}`;
+    document.getElementById('trip-code-badge').textContent = `CODE: ${code} (${currentTripBaseCurrency})`;
     document.getElementById('trip-members-display').textContent = `旅伴成員: ${currentMembers.join(', ')} (${currentMembers.length} 人)`;
-    document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (AUD)`;
+    document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (${currentTripBaseCurrency})`;
 
-    // 動態更新「付款人」下拉選單
     const payerSelect = document.getElementById('exp-payer');
     payerSelect.innerHTML = '';
     currentMembers.forEach(m => {
@@ -331,7 +319,6 @@ function enterDashboard(id, name, code, members) {
         payerSelect.appendChild(opt);
     });
     
-    // 🌟 核心修改：生成手動記帳的進階分帳旅伴輸入格
     renderManualMemberFields();
 
     document.getElementById('portal-screen').classList.add('hidden');
@@ -341,23 +328,21 @@ function enterDashboard(id, name, code, members) {
     fetchDataFromSupabase();
 }
 
-// 🌟 全新新增：統一還原表單與按鈕狀態的防呆工具
+// 🌟 修正 2：重置表單狀態工具（補回防呆：重置後自動塞回今日日期）
 function resetFormState() {
     editingExpenseId = null;
-    
-    // 清空基本表單
     const form = document.getElementById('expense-form');
     if (form) form.reset();
     
-    // 還原提交按鈕的字眼
+    // 💡 修正關鍵：reset() 會清空日期，這裡重新呼叫寫入今日日期，免得用家重複填寫
+    setDefaultDate(); 
+
     const submitBtn = document.querySelector('#expense-form button[type="submit"]');
     if (submitBtn) submitBtn.textContent = "➕ 新增此筆開支";
     
-    // 🌟 移除動態產生的「刪除」按鈕
     const dynamicDeleteBtn = document.getElementById('form-dynamic-delete-btn');
     if (dynamicDeleteBtn) dynamicDeleteBtn.remove();
     
-    // 重新初始化多人的自訂拆帳格仔
     renderManualMemberFields();
 }
 
@@ -365,25 +350,21 @@ function exitToPortal() {
     currentTripId = null; 
     currentTripCode = ""; 
     currentMembers = [];
+    currentTripBaseCurrency = "AUD"; 
     
-    // 🌟 新增：退出旅程回到大廳時，也順便把表單編輯狀態與動態按鈕重置洗淨
     resetFormState();
     
-    // 💡 加入安全防呆檢查：確保元素存在才清空，避免因為找不到舊 ID 而令整個功能癱瘓
     if (document.getElementById('input-load-code')) document.getElementById('input-load-code').value = "";
     if (document.getElementById('input-new-trip-name')) document.getElementById('input-new-trip-name').value = "";
     if (document.getElementById('portal-csv-input')) document.getElementById('portal-csv-input').value = "";
     
-    // 如果你 HTML 還留著舊欄位就清空，冇咗亦唔會報錯
     const oldMembersInput = document.getElementById('input-new-trip-members');
     if (oldMembersInput) oldMembersInput.value = "";
 
-    // 順利切換隱藏狀態
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('portal-screen').classList.remove('hidden');
     document.body.className = "p-4 md:p-8 flex items-center justify-center min-h-screen";
     
-    // 重新初始化首頁一格格的旅伴輸入框
     initDefaultMemberRows();
 }
 
@@ -397,7 +378,6 @@ function showError(id) {
 // ==========================================
 async function fetchDataFromSupabase() {
     try {
-        // 🌟 重點：在 URL 中加入了 &is_deleted=eq.false，只撈出未被刪除的帳目
         const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}&is_deleted=eq.false&select=*&order=date.asc,id.asc`, { method: "GET", headers: headers });
         expenses = await res.json();
         renderAll();
@@ -415,17 +395,41 @@ async function handleFormSubmit(e) {
     const shopback_pct = parseFloat(document.getElementById('exp-shopback').value) || 0;
     const overrideVal = parseFloat(document.getElementById('exp-override').value);
 
-    let amount_in_aud = 0, is_overridden = false;
-    let rate = currency === 'NZD' ? (exchangeRates[date] || 0.82) : 1;
+    let amount_in_base = 0, is_overridden = false;
+    let rate = 1.0;
+    const tripBase = currentTripBaseCurrency || "AUD";
+
+    if (currency !== tripBase) {
+        if (tripBase === "AUD" && currency === "NZD" && exchangeRates && exchangeRates[date]) {
+            rate = exchangeRates[date];
+        } else {
+            try {
+                const res = await fetch(`https://api.frankfurter.app/${date}?from=${tripBase}&to=${currency}`);
+                if (!res.ok) throw new Error('API 響應錯誤');
+                const data = await res.json();
+                if (data && data.rates && data.rates[currency]) {
+                    rate = 1 / data.rates[currency];
+                }
+            } catch (err) {
+                console.warn(`🌐 網路匯率獲取失敗，啟用安全保底：`, err);
+                if (tripBase === "AUD" && currency === "NZD") rate = 0.82;
+                else if (tripBase === "HKD" && currency === "JPY") rate = 0.05;
+                else rate = 1.0;
+            }
+        }
+    } else {
+        rate = 1.0;
+    }
 
     if (!isNaN(overrideVal) && overrideVal > 0) {
-        amount_in_aud = overrideVal; is_overridden = true;
-    } else { amount_in_aud = amount * rate; }
+        amount_in_base = overrideVal; is_overridden = true;
+    } else { 
+        amount_in_base = amount * rate; 
+    }
     
-    const shopback_saved_aud = amount_in_aud * (shopback_pct / 100);
-    const net_amount_aud = amount_in_aud - shopback_saved_aud;
+    const shopback_saved_base = amount_in_base * (shopback_pct / 100);
+    const net_amount_base = amount_in_base - shopback_saved_base;
 
-    // 🌟 核心修改：動態撈取前端輸入的進階分帳細節
     let paid_detail = {};
     let split_detail = {};
     let totalCustomPaid = 0;
@@ -449,9 +453,7 @@ async function handleFormSubmit(e) {
         }
     });
 
-    // 防呆防空機制
     if (totalCustomPaid > 0) {
-        // 如果有填寫自訂代墊，找出出資最多的人當作主要付款人（以兼容明細表顯示）
         let maxPaid = -1;
         for (let m in paid_detail) {
             if (paid_detail[m] > maxPaid) {
@@ -460,34 +462,26 @@ async function handleFormSubmit(e) {
             }
         }
     } else {
-        // 如果完全留空，走預設：由上方選取的單一付款人全額支付
         paid_detail[payer] = amount;
     }
 
     if (totalCustomSplit > 0) {
-        // 如果有填寫自訂分攤金額，將其標記為自訂拆帳
         has_custom_split = true;
     }
 
     const payload = { 
         trip_id: currentTripId, date, name, amount, currency, category, payer: primaryPayer, 
-        shopback_pct, rate, shopback_saved_aud, net_amount_aud, amount_in_aud, is_overridden,
+        shopback_pct, rate, shopback_saved_base, net_amount_base, amount_in_base, is_overridden,
         split_detail, paid_detail, has_custom_split
     };
     
     if (editingExpenseId) {
-        // 如果有 ID，用 PATCH 修改該筆資料
         await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${editingExpenseId}`, { 
-            method: "PATCH", 
-            headers: headers, 
-            body: JSON.stringify(payload) 
+            method: "PATCH", headers: headers, body: JSON.stringify(payload) 
         });
     } else {
-        // 如果沒有 ID，照原樣用 POST 新增一筆
         await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, { 
-            method: "POST", 
-            headers: headers, 
-            body: JSON.stringify(payload) 
+            method: "POST", headers: headers, body: JSON.stringify(payload) 
         });
     }
     
@@ -498,32 +492,40 @@ async function handleFormSubmit(e) {
 async function deleteItem(id) {
     if(confirm("確定要刪除此筆雲端開支嗎？")) {
         await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?id=eq.${id}`, { 
-            method: "PATCH", 
-            headers: headers,
-            body: JSON.stringify({ is_deleted: true }) 
+            method: "PATCH", headers: headers, body: JSON.stringify({ is_deleted: true }) 
         });
-        // 🌟 新增：刪除完後呼叫狀態重置，讓表單回復為「新增模式」並隱藏刪除掣
         resetFormState();
         fetchDataFromSupabase();
     }
 }
 
-// 內頁追加匯入 CSV
+// 🌟 修正 3 & 5：內頁追加匯入 CSV（補上 try...catch 機制與彈窗提示防禦）
 function handleCsvImport(e) {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = async function(evt) {
-        // 💡 修正 5：這裡同樣加上 .filter(l => l.length > 0) 清走結尾空白行
-        const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-        if (lines.length < 2) return;
-        const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, currentMembers, currentTripId);
+        try { // 💡 修正關鍵：防禦非預期 CSV 格式或網路錯誤造成程式中斷
+            const lines = evt.target.result.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length < 2) {
+                alert("❌ CSV 數據量不足，無法解析。");
+                return;
+            }
+            const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+            
+            let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, currentMembers, currentTripId, currentTripBaseCurrency);
 
-        await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
-            method: "POST", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(bulkPayload)
-        });
-        alert(`已追加匯入 ${bulkPayload.length} 筆項目數據！`);
-        fetchDataFromSupabase();
+            const res = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
+                method: "POST", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(bulkPayload)
+            });
+
+            if (!res.ok) throw new Error("Supabase 寫入失敗");
+
+            alert(`🎉 已成功追加匯入 ${bulkPayload.length} 筆項目數據！`);
+            fetchDataFromSupabase();
+        } catch (err) {
+            console.error("CSV Import Error:", err);
+            alert("❌ CSV 追加匯入失敗！請確保上傳的檔案欄位架構正確，且網路連線正常。");
+        }
     };
     e.target.value = ""; 
     reader.readAsText(file, 'UTF-8');
@@ -531,26 +533,23 @@ function handleCsvImport(e) {
 
 async function clearCurrentTripData() {
     if(confirm('⚠️ 警告：這將會直接清空「當前旅程」在雲端的所有明細！確定嗎？')) {
-        // 🌟 批次更新：把該旅程所有 expenses 的 is_deleted 全改成 true
         await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses?trip_id=eq.${currentTripId}`, { 
-            method: "PATCH", 
-            headers: headers,
-            body: JSON.stringify({ is_deleted: true })
+            method: "PATCH", headers: headers, body: JSON.stringify({ is_deleted: true })
         });
         fetchDataFromSupabase();
     }
 }
 
 // ==========================================
-// 🎨 前端介面渲染與分帳算法 (新增邊個畀邊個功能)
+// 🎨 前端介面渲染與分帳算法
 // ==========================================
 function renderAll() {
     const tbody = document.getElementById('expense-tbody'); tbody.innerHTML = '';
     let totalNet = 0, totalSaved = 0;
+    const tripBase = currentTripBaseCurrency || "AUD"; 
     
     let catTotals = { "餐飲": 0, "超市": 0, "住房": 0, "汽車": 0, "休閒育樂": 0, "手信": 0, "通訊": 0, "醫療保健": 0, "其他": 0 };
     
-    // 初始化每個人「實際代墊的錢」與「個人應分攤的錢」帳目矩陣
     let userPaid = {};
     let userOwed = {};
     currentMembers.forEach(m => { 
@@ -559,44 +558,49 @@ function renderAll() {
     });
 
     expenses.forEach(exp => {
-        totalNet += exp.net_amount_aud; totalSaved += exp.shopback_saved_aud;
-        if (catTotals[exp.category] !== undefined) catTotals[exp.category] += exp.net_amount_aud; else catTotals["其他"] += exp.net_amount_aud;
+        const netAmt = exp.net_amount_base !== undefined ? exp.net_amount_base : (exp.net_amount_aud || 0);
+        const savedAmt = exp.shopback_saved_base !== undefined ? exp.shopback_saved_base : (exp.shopback_saved_aud || 0);
+        const baseAmt = exp.amount_in_base !== undefined ? exp.amount_in_base : (exp.amount_in_aud || 0);
+
+        totalNet += netAmt; 
+        totalSaved += savedAmt;
+        if (catTotals[exp.category] !== undefined) catTotals[exp.category] += netAmt; else catTotals["其他"] += netAmt;
         
-        // 1. 處理代墊付出
         if (exp.paid_detail && Object.keys(exp.paid_detail).length > 0) {
             for (let member in exp.paid_detail) {
                 let memberPaidNzd = exp.paid_detail[member];
                 let ratio = memberPaidNzd / exp.amount; 
-                let memberPaidAud = exp.net_amount_aud * ratio;
+                let memberPaidBase = netAmt * ratio;
                 if (userPaid[member] !== undefined) {
-                    userPaid[member] += memberPaidAud;
+                    userPaid[member] += memberPaidBase;
                 }
             }
         } else {
-            if (userPaid[exp.payer] !== undefined) userPaid[exp.payer] += exp.net_amount_aud;
+            if (userPaid[exp.payer] !== undefined) userPaid[exp.payer] += netAmt;
         }
 
-        // 2. 處理應分攤扣款
         if (exp.has_custom_split && exp.split_detail && Object.keys(exp.split_detail).length > 0) {
             for (let member in exp.split_detail) {
                 let memberSplitNzd = exp.split_detail[member];
                 let ratio = memberSplitNzd / exp.amount;
-                let memberOwedAud = exp.net_amount_aud * ratio;
+                let memberOwedBase = netAmt * ratio;
                 if (userOwed[member] !== undefined) {
-                    userOwed[member] += memberOwedAud;
+                    userOwed[member] += memberOwedBase;
                 }
             }
         } else {
             const activeMembers = currentMembers.length || 1;
-            const avgOwedAud = exp.net_amount_aud / activeMembers;
+            const avgOwedBase = netAmt / activeMembers;
             currentMembers.forEach(member => {
                 if (userOwed[member] !== undefined) {
-                    userOwed[member] += avgOwedAud;
+                    userOwed[member] += avgOwedBase;
                 }
             });
         }
 
-        let calcBasisText = exp.is_overridden ? `<span class="text-amber-400 font-semibold">✍️ 覆寫: $${exp.amount_in_aud.toFixed(2)}</span>` : (exp.currency === 'NZD' ? `匯率: ${parseFloat(exp.rate).toFixed(4)}` : '直結 AUD');
+        let calcBasisText = exp.is_overridden ? 
+            `<span class="text-amber-400 font-semibold">✍️ 覆寫: $${baseAmt.toFixed(2)}</span>` : 
+            (exp.currency !== tripBase ? `匯率: ${parseFloat(exp.rate).toFixed(4)}` : `直結 ${tripBase}`);
 
         let catBadgeColor = "bg-slate-900 text-slate-300";
         if(exp.category === "餐飲") catBadgeColor = "bg-orange-950/50 text-orange-400 border border-orange-800/50";
@@ -621,35 +625,31 @@ function renderAll() {
             <td class="p-3">${parseFloat(exp.amount).toFixed(2)} ${exp.currency}</td>
             <td class="p-3 text-slate-400 whitespace-nowrap">${calcBasisText}</td>
             <td class="p-3 text-sky-400">${exp.shopback_pct}%</td>
-            <td class="p-3 font-semibold text-emerald-400">$${parseFloat(exp.net_amount_aud).toFixed(2)}</td>
+            <td class="p-3 font-semibold text-emerald-400">$${parseFloat(netAmt).toFixed(2)}</td>
             <td class="p-3 text-slate-300 font-medium">${payerDisplay}</td>
             <td class="p-3">
                 <button onclick="editItem(${exp.id})" class="text-sky-400 hover:text-sky-300 font-medium transition-colors cursor-pointer">編輯</button>
             </td>
-        `;
+        `; // ✅ 依照指令：保留原樣，明細表不放置刪除按鈕
         tbody.appendChild(row);
     });
 
-    document.getElementById('total-net-aud').textContent = `$${totalNet.toFixed(2)} AUD`;
-    document.getElementById('total-shopback-aud').textContent = `$${totalSaved.toFixed(2)} AUD`;
+    document.getElementById('total-net-aud').textContent = `$${totalNet.toFixed(2)} ${tripBase}`;
+    document.getElementById('total-shopback-aud').textContent = `$${totalSaved.toFixed(2)} ${tripBase}`;
     document.getElementById('total-count').textContent = `${expenses.length} 筆`;
 
-    // ==========================================
-    // 💡 核心升級：3. 渲染對帳清單與精準過數方案
-    // ==========================================
     const settlementList = document.getElementById('settlement-list'); settlementList.innerHTML = '';
     if (expenses.length > 0) {
         let sHtml = `<p class="mb-2 text-slate-400 text-xs">📊 已成功啟用 Supabase JSONB 多人分帳引擎技術</p><ul class="space-y-1.5 border-t border-slate-700 pt-2 mb-4">`;
         
-        let debtors = [];   // 需要補交錢的人
-        let creditors = []; // 可以收回錢的人
+        let debtors = [];   
+        let creditors = []; 
 
         for (let user in userPaid) {
             let paid = userPaid[user];
             let owed = userOwed[user] || 0;
             let diff = paid - owed;
             
-            // 將所有人分類至債務陣列
             if (diff < -0.01) {
                 debtors.push({ name: user, amount: Math.abs(diff) });
             } else if (diff > 0.01) {
@@ -663,13 +663,12 @@ function renderAll() {
                     <span class="text-slate-400 ml-1 text-[11px]">(代墊: $${paid.toFixed(1)} / 分攤: $${owed.toFixed(1)})</span>
                 </span>
                 <span class="${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">
-                    ${diff >= 0 ? '收回' : '補交'} $${Math.abs(diff).toFixed(2)} AUD
+                    ${diff >= 0 ? '收回' : '補交'} $${Math.abs(diff).toFixed(2)} ${tripBase}
                 </span>
             </li>`;
         }
         sHtml += `</ul>`;
 
-        // 🧠 貪婪算法配對：最佳化計算邊個畀邊個幾多錢
         let transfers = [];
         let dIdx = 0, cIdx = 0;
         
@@ -689,14 +688,13 @@ function renderAll() {
             if (creditor.amount <= 0.01) cIdx++;
         }
 
-        // 渲染到畫面上
         sHtml += `<p class="mb-2 text-slate-400 text-xs border-t border-slate-700 pt-3 font-semibold">💸 最終過數方案 (直接跟住執即可)：</p>`;
         if (transfers.length > 0) {
             sHtml += `<ul class="space-y-1.5 bg-slate-950/60 p-2.5 rounded border border-slate-800">`;
             transfers.forEach(t => {
                 sHtml += `<li class="text-xs text-slate-300 flex justify-between items-center">
                     <span>💵 <span class="font-bold text-rose-400">${t.from}</span> 需要支付畀 <span class="font-bold text-emerald-400">${t.to}</span></span>
-                    <span class="font-extrabold text-sky-400">$${t.amount.toFixed(2)} AUD</span>
+                    <span class="font-extrabold text-sky-400">$${t.amount.toFixed(2)} ${tripBase}</span>
                 </li>`;
             });
             sHtml += `</ul>`;
@@ -723,7 +721,6 @@ function renderChart(catData) {
     });
 }
 
-// 🌟 新增：手動記帳面板中，動態生成各成員的進階自訂拆帳及出資輸入格
 function renderManualMemberFields() {
     const container = document.getElementById('manual-member-details-container');
     if (!container) return;
@@ -731,13 +728,11 @@ function renderManualMemberFields() {
     
     if (!currentMembers || currentMembers.length === 0) return;
 
-    // 生成精簡標題欄
     const headerRow = document.createElement('div');
     headerRow.className = "grid grid-cols-3 gap-2 text-[10px] font-bold text-slate-400 border-b border-slate-800 pb-1 text-center";
     headerRow.innerHTML = `<div class="text-left">旅伴名字</div><div>出資 (代墊)</div><div>分攤 (應付)</div>`;
     container.appendChild(headerRow);
 
-    // 為每位成員生成對應的一列輸入格
     currentMembers.forEach(m => {
         const row = document.createElement('div');
         row.className = "grid grid-cols-3 gap-2 items-center member-split-row py-0.5";
@@ -751,14 +746,13 @@ function renderManualMemberFields() {
     });
 }
 
-// 🌟 全新新增：點擊明細表「編輯」時觸發的動作
 function editItem(id) {
     const exp = expenses.find(e => e.id === id);
     if (!exp) return;
 
-    editingExpenseId = id; // 鎖定目前修改中的 ID
+    editingExpenseId = id; 
+    const baseAmt = exp.amount_in_base !== undefined ? exp.amount_in_base : (exp.amount_in_aud || 0);
 
-    // 1. 將基本欄位塞回表單
     document.getElementById('exp-date').value = exp.date;
     document.getElementById('exp-name').value = exp.name;
     document.getElementById('exp-amount').value = exp.amount;
@@ -766,9 +760,8 @@ function editItem(id) {
     document.getElementById('exp-category').value = exp.category;
     document.getElementById('exp-payer').value = exp.payer;
     document.getElementById('exp-shopback').value = exp.shopback_pct;
-    document.getElementById('exp-override').value = exp.is_overridden ? exp.amount_in_aud : "";
+    document.getElementById('exp-override').value = exp.is_overridden ? baseAmt : "";
 
-    // 2. 塞回旅伴細項數據
     renderManualMemberFields();
     const splitRows = document.querySelectorAll('.member-split-row');
     splitRows.forEach(row => {
@@ -779,29 +772,23 @@ function editItem(id) {
         if (exp.split_detail && exp.split_detail[m] !== undefined) splitInput.value = exp.split_detail[m];
     });
 
-    // 3. 改變表單 Submit 按鈕字眼
     const submitBtn = document.querySelector('#expense-form button[type="submit"]');
     if (submitBtn) {
         submitBtn.textContent = "💾 儲存修改項目";
 
-        // 🌟 如果畫面上還沒有刪除掣，就動態在儲存按鈕旁加上一個紅色的「刪除此筆」按鈕
         if (!document.getElementById('form-dynamic-delete-btn')) {
             const deleteBtn = document.createElement('button');
             deleteBtn.id = 'form-dynamic-delete-btn';
-            deleteBtn.type = 'button'; // 🌟 必須設定為 button，防止誤觸 form submit
+            deleteBtn.type = 'button'; 
             deleteBtn.className = 'ml-2 bg-rose-950/40 hover:bg-rose-900 border border-rose-800 text-rose-300 py-2 px-4 rounded text-xs font-medium transition-colors cursor-pointer';
             deleteBtn.textContent = '🗑️ 刪除此筆項目';
             
-            // 點擊時直接觸發原有的刪除功能
             deleteBtn.onclick = async function() {
                 await deleteItem(id);
             };
-            
-            // 緊貼插在儲存修改按鈕後面
             submitBtn.parentNode.appendChild(deleteBtn);
         }
     }
 
-    // 4. 自動流暢捲動回網頁上方的表單位置
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
