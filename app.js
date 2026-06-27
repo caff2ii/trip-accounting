@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // 🌟 實作：依照「做法 A」結構動態渲染智能貨幣選單 (帶有國旗)
+// 🌟 修正版：將代碼 (c.code) 放最前，立刻激活鍵盤盲打跳轉功能！
 function populateCurrencyDropdowns() {
     const newTripBaseSelect = document.getElementById('input-new-trip-base');
     const expCurrencySelect = document.getElementById('exp-currency');
@@ -78,7 +79,8 @@ function populateCurrencyDropdowns() {
         currencyList.forEach(c => {
             let opt = document.createElement('option');
             opt.value = c.code;
-            opt.textContent = `${c.flag} ${c.code} - ${c.name}`;
+            // 💡 關鍵改動：${c.code} 擺最前
+            opt.textContent = `${c.code} ${c.flag} - ${c.name}`; 
             newTripBaseSelect.appendChild(opt);
         });
         newTripBaseSelect.value = "AUD"; 
@@ -90,7 +92,8 @@ function populateCurrencyDropdowns() {
         currencyList.forEach(c => {
             let opt = document.createElement('option');
             opt.value = c.code;
-            opt.textContent = `${c.flag} ${c.code} - ${c.name}`;
+            // 💡 關鍵改動：${c.code} 擺最前
+            opt.textContent = `${c.code} ${c.flag} - ${c.name}`; 
             expCurrencySelect.appendChild(opt);
         });
         expCurrencySelect.value = "NZD"; 
