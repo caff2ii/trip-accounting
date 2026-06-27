@@ -67,37 +67,77 @@ document.addEventListener("DOMContentLoaded", () => {
     bindEvents();
 });
 
-// 🌟 實作：依照「做法 A」結構動態渲染智能貨幣選單 (帶有國旗)
-// 🌟 修正版：將代碼 (c.code) 放最前，立刻激活鍵盤盲打跳轉功能！
+// ==========================================
+// 🌍 完美對接自訂浮動下拉選單 (取代原本的 option 注入)
+// ==========================================
 function populateCurrencyDropdowns() {
-    const newTripBaseSelect = document.getElementById('input-new-trip-base');
-    const expCurrencySelect = document.getElementById('exp-currency');
+    // 1. 設定第一個選單：門戶建立旅程本位幣
+    setupCustomCurrencyPicker('input-new-trip-base', 'trip-base-dropdown', 'trip-base-picker-wrapper', 'AUD');
+    
+    // 2. 設定第二個選單：記帳內頁表單消費幣
+    setupCustomCurrencyPicker('exp-currency', 'exp-currency-dropdown', 'exp-currency-picker-wrapper', 'NZD');
+}
 
-    // 渲染「建立旅程」本位幣選單
-    if (newTripBaseSelect) {
-        newTripBaseSelect.innerHTML = '';
-        currencyList.forEach(c => {
-            let opt = document.createElement('option');
-            opt.value = c.code;
-            // 💡 關鍵改動：${c.code} 擺最前
-            opt.textContent = `${c.code} ${c.flag} - ${c.name}`; 
-            newTripBaseSelect.appendChild(opt);
-        });
-        newTripBaseSelect.value = "AUD"; 
-    }
+// 📦 萬用封裝：處理「打字即時搜尋 + 浮動 Div 渲染 + 點擊選取數值」
+function setupCustomCurrencyPicker(inputId, dropdownId, wrapperId, defaultVal) {
+    const inputEl = document.getElementById(inputId);
+    const dropdownEl = document.getElementById(dropdownId);
+    const wrapperEl = document.getElementById(wrapperId);
 
-    // 渲染「新增開支」消費幣別選單
-    if (expCurrencySelect) {
-        expCurrencySelect.innerHTML = '';
-        currencyList.forEach(c => {
-            let opt = document.createElement('option');
-            opt.value = c.code;
-            // 💡 關鍵改動：${c.code} 擺最前
-            opt.textContent = `${c.code} ${c.flag} - ${c.name}`; 
-            expCurrencySelect.appendChild(opt);
+    if (!inputEl || !dropdownEl) return;
+
+    // 預設填入初始貨幣代碼
+    inputEl.value = defaultVal;
+
+    // 核心渲染與過濾函式
+    const renderDropdown = (keyword) => {
+        const cleanKeyword = keyword.toUpperCase().trim();
+        
+        // 🔥 同時支援模糊比對代碼（如打 H / HKD）與中文名稱（如打 港幣）
+        const filtered = currencyList.filter(c => 
+            c.code.toUpperCase().includes(cleanKeyword) || 
+            c.name.includes(cleanKeyword)
+        );
+
+        if (filtered.length === 0) {
+            dropdownEl.innerHTML = `<div class="p-3 text-xs text-slate-500 text-center">找不到此貨幣</div>`;
+            dropdownEl.classList.remove('hidden');
+            return;
+        }
+
+        // 動態生成美化 HTML 填入你 HTML 預留的浮動 Div 內
+        dropdownEl.innerHTML = filtered.map(c => `
+            <div class="currency-item p-2.5 text-xs text-slate-200 hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors" data-code="${c.code}">
+                <span class="font-bold">${c.flag} ${c.code}</span>
+                <span class="text-slate-400 text-[11px]">${c.name}</span>
+            </div>
+        `).join('');
+
+        dropdownEl.classList.remove('hidden');
+
+        // 監聽選項點擊事件
+        dropdownEl.querySelectorAll('.currency-item').forEach(item => {
+            item.onclick = (e) => {
+                e.stopPropagation(); // 防止事件冒泡
+                inputEl.value = item.getAttribute('data-code'); // 正確把 "HKD" 填入 input
+                dropdownEl.classList.add('hidden');            // 隱藏選單
+                inputEl.dispatchEvent(new Event('change'));    // 觸發連動更新
+            };
         });
-        expCurrencySelect.value = "NZD"; 
-    }
+    };
+
+    // 點擊或聚焦輸入框時顯示選單
+    inputEl.addEventListener('focus', () => renderDropdown(inputEl.value));
+    
+    // 監聽打字（如打 H）即時模糊過濾
+    inputEl.addEventListener('input', (e) => renderDropdown(e.target.value));
+
+    // 點擊選單外部空白處時自動收起
+    document.addEventListener('click', (e) => {
+        if (wrapperEl && !wrapperEl.contains(e.target)) {
+            dropdownEl.classList.add('hidden');
+        }
+    });
 }
 
 // 統一設定當前本地日期的預設值
@@ -732,9 +772,9 @@ function renderAll() {
         `; 
         tbody.appendChild(row);
     });
-
-    document.getElementById('total-net-aud').textContent = `$${totalNet.toFixed(2)} ${tripBase}`;
-    document.getElementById('total-shopback-aud').textContent = `$${totalSaved.toFixed(2)} ${tripBase}`;
+    
+    document.getElementById('total-net-base').textContent = `$${totalNet.toFixed(2)} ${tripBase}`;
+    document.getElementById('total-shopback-base').textContent = `$${totalSaved.toFixed(2)} ${tripBase}`;
     document.getElementById('total-count').textContent = `${expenses.length} 筆`;
 
     const settlementList = document.getElementById('settlement-list'); settlementList.innerHTML = '';
