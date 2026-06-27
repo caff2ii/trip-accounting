@@ -953,8 +953,11 @@ function editItem(id) {
         }
     }
     // 🆕 新增：點擊編輯時顯示「取消」按鈕
-    const cancelEditBtn = document.getElementById('btn-cancel-edit');
-    if (cancelEditBtn) cancelEditBtn.classList.remove('hidden');
+    //const cancelEditBtn = document.getElementById('btn-cancel-edit');
+    //if (cancelEditBtn) cancelEditBtn.classList.remove('hidden');
+
+    // 在編輯項目的觸發函式內
+    document.getElementById('btn-cancel-edit').classList.remove('hidden');
 
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
