@@ -38,6 +38,17 @@
                 <input type="text" id="input-new-trip-name" placeholder="例如：日本自駕遊 2047" class="w-full text-xs bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:border-emerald-500 focus:outline-none">
             </div>
 
+            <!-- 🌍 門戶頁面建立旅程的本位幣選擇器 -->
+            <div class="flex flex-col gap-1 relative" id="trip-base-picker-wrapper">
+                <label class="block text-[11px] text-slate-400">旅程結算本位幣 (Base Currency)</label>
+                <div class="relative">
+                    <input type="text" id="input-new-trip-base" placeholder="搜尋貨幣 (例如: 港幣, JPY, AUD)" class="w-full text-xs bg-slate-900 border border-slate-700 rounded-lg p-2 pl-8 text-white focus:border-emerald-500 focus:outline-none uppercase tracking-wider font-semibold" autocomplete="off">
+                    <span class="absolute left-2.5 top-2.5 text-xs text-slate-500">🔍</span>
+                </div>
+                <!-- 浮動下拉選單容器 -->
+                <div id="trip-base-dropdown" class="hidden absolute left-0 right-0 top-[100%] mt-1 max-h-48 overflow-y-auto bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-50 divide-y divide-slate-800/60 scrollbar-thin"></div>
+            </div>
+
             <div class="p-3 bg-slate-900/60 rounded-lg border border-slate-800/80 space-y-2">
                 <div class="text-[11px] font-bold text-amber-400 flex items-center gap-1">📍 手動輸入人名</div>
                 <div id="members-input-container" class="space-y-2"></div>
@@ -106,18 +117,25 @@
                             <label class="block text-sm font-medium text-slate-300 mb-1">金額</label>
                             <input type="number" step="0.01" id="exp-amount" required class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none">
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-300 mb-1">結算幣值</label>
-                            <select id="exp-currency" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white focus:outline-none">
-                                <option value="NZD">NZD</option>
-                                <option value="AUD">AUD</option>
-                            </select>
+                        
+                        <!-- 🌍 記帳內頁表單的自訂消費貨幣選擇器 -->
+                        <div class="flex flex-col gap-1 relative" id="exp-currency-picker-wrapper">
+                            <label class="block text-sm font-medium text-slate-300">結算幣值</label>
+                            <div class="relative">
+                                <input type="text" id="exp-currency" placeholder="搜尋貨幣" class="w-full bg-slate-900 border border-slate-600 rounded p-2 pl-8 text-white focus:border-sky-500 focus:outline-none uppercase tracking-wider font-semibold text-sm" autocomplete="off">
+                                <span class="absolute left-2.5 top-2.5 text-sm text-slate-500">🔍</span>
+                            </div>
+                            <!-- 浮動下拉選單容器 -->
+                            <div id="exp-currency-dropdown" class="hidden absolute left-0 right-0 top-[100%] mt-1 max-h-48 overflow-y-auto bg-slate-900 border border-slate-600 rounded shadow-2xl z-50 divide-y divide-slate-700/60 scrollbar-thin"></div>
                         </div>
                     </div>
+                    
+                    <!-- ✅ ID 已清洗：覆寫區塊標籤注入 base-currency-label -->
                     <div id="override-container" class="bg-slate-900/50 p-3 rounded border border-dashed border-slate-600">
-                        <label class="block text-xs font-semibold text-amber-400 mb-1">🏦 銀行帳單對帳覆寫 (選填)</label>
-                        <input type="number" step="0.01" id="exp-override" placeholder="若已有實際 AUD 扣帳數請填此" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm focus:outline-none">
+                        <label class="block text-xs font-semibold text-amber-400 mb-1">🏦 銀行帳單對帳覆寫 (<span class="base-currency-label">---</span> 選填)</label>
+                        <input type="number" step="0.01" id="exp-override" placeholder="若已有實際本地扣帳數請填此" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm focus:outline-none">
                     </div>
+                    
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-sm font-medium text-slate-300 mb-1">消費類別</label>
@@ -146,8 +164,7 @@
                     <div class="p-3 bg-slate-900/80 rounded-lg border border-slate-700 space-y-2">
                         <h4 class="text-xs font-semibold text-sky-400 flex items-center gap-1">⚙️ 進階分帳與代墊細節</h4>
                         <p class="text-[10px] text-slate-400 leading-normal">（選填。若全部留空，系統會自動按上方選取的「付款人全付」及「全團旅伴平分」自動處理）</p>
-                        <div id="manual-member-details-container" class="space-y-2 pt-1">
-                            </div>
+                        <div id="manual-member-details-container" class="space-y-2 pt-1"></div>
                     </div>
 
                     <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded mt-2 cursor-pointer transition-colors">儲存至雲端資料庫</button>
@@ -156,13 +173,14 @@
 
             <div class="lg:col-span-2 space-y-6">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- ✅ ID 已清洗：全面改為 -base 結尾 -->
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
                         <div class="text-sm text-slate-400 font-medium">總支出總計 (折實後)</div>
-                        <div id="total-net-aud" class="text-2xl font-bold text-emerald-400 mt-1">$0.00 AUD</div>
+                        <div id="total-net-base" class="text-2xl font-bold text-emerald-400 mt-1">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
                         <div class="text-sm text-slate-400 font-medium">ShopBack 累計慳返</div>
-                        <div id="total-shopback-aud" class="text-2xl font-bold text-sky-400 mt-1">$0.00 AUD</div>
+                        <div id="total-shopback-base" class="text-2xl font-bold text-sky-400 mt-1">$0.00</div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
                         <div class="text-sm text-slate-400 font-medium">總計項目筆數</div>
@@ -171,8 +189,9 @@
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- ✅ ID 已清洗：對帳單標題注入 base-currency-label -->
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <h3 id="settlement-title" class="text-md font-semibold text-white mb-3 border-b border-slate-700 pb-1">最終分帳對帳單 (AUD)</h3>
+                        <h3 id="settlement-title" class="text-md font-semibold text-white mb-3 border-b border-slate-700 pb-1">最終分帳對帳單 (<span class="base-currency-label">---</span>)</h3>
                         <div id="settlement-list" class="space-y-2 text-sm text-slate-200"></div>
                     </div>
                     <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col items-center">
@@ -195,7 +214,8 @@
                                     <th class="p-3">原始金額</th>
                                     <th class="p-3">基礎 / 覆寫</th>
                                     <th class="p-3">ShopBack</th>
-                                    <th class="p-3">折實 (AUD)</th>
+                                    <!-- ✅ ID 已清洗：表格標頭折實注入 base-currency-label -->
+                                    <th class="p-3">折實 (<span class="base-currency-label">---</span>)</th>
                                     <th class="p-3">付款人</th>
                                     <th class="p-3">操作</th>
                                 </tr>
