@@ -198,16 +198,21 @@ function handlePortalCsvMagic(e) {
             let bulkPayload = parseCsvLinesToPayload(lines, csvHeaders, finalMembers, newTripId, tripBase);
 
             if (bulkPayload.length > 0) {
-                await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
-                    method: "POST", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(bulkPayload)
+                // ✅ 加上 const resExp = 成功接收 fetch 的回傳狀態
+                const resExp = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
+                    method: "POST", 
+                    headers: { ...headers, "Prefer": "return=minimal" }, 
+                    body: JSON.stringify(bulkPayload)
                 });
-                //  新增：如果後端報錯，強制拋出異常阻斷後續的 Alert
+                
+                // 檢查後端是否報錯
                 if (!resExp.ok) {
                     const errorText = await resExp.text();
                     throw new Error(`資料庫寫入失敗: ${errorText}`);
                 }
             }
 
+            // 🎉 真正的大團圓結局！
             alert(`🎉 魔法解鎖成功！自動偵測旅伴：[${finalMembers.join(', ')}]，並已上載 ${bulkPayload.length} 筆帳目！`);
             showSuccessModal(newTripId, tripData[0].trip_name, tripData[0].passcode, finalMembers, tripBase);
 
