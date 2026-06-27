@@ -171,6 +171,14 @@ function bindEvents() {
         alert("Code 已成功複製！");
     });
 
+    // 🆕 新增：監聽取消編輯按鈕點擊
+    const cancelEditBtn = document.getElementById('btn-cancel-edit');
+    if (cancelEditBtn) {
+        cancelEditBtn.addEventListener('click', () => {
+            resetFormState(); // 直接利用重置函數回復初始模式
+        });
+    }
+    
     document.getElementById('expense-form').addEventListener('submit', handleFormSubmit);
     document.getElementById('csv-file-input').addEventListener('change', handleCsvImport);
     document.getElementById('clear-db-data').addEventListener('click', clearCurrentTripData);
@@ -463,11 +471,11 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
 
 // ⚖️ 完美對接：重置表單狀態
 function resetFormState() {
-    editingExpenseId = null;
+    editingExpenseId = null; // 清空當前正在編輯的項目 ID
     const form = document.getElementById('expense-form');
-    if (form) form.reset();
+    if (form) form.reset(); // 清空表單所有輸入框
     
-    setDefaultDate(); 
+    setDefaultDate(); // 重新填入今天的預設日期
 
     // 🌟 同步：重置表單時確保幣別切回當前旅程的本位幣
     const expCurrencySelect = document.getElementById('exp-currency');
@@ -475,13 +483,19 @@ function resetFormState() {
         expCurrencySelect.value = currentTripBaseCurrency;
     }
 
-    const submitBtn = document.querySelector('#expense-form button[type="submit"]');
-    if (submitBtn) submitBtn.textContent = "➕ 新增此筆開支";
+    // 🛠️ 修正點 1：使用精準的 ID 抓取儲存按鈕，並將文字還原為預設的「儲存至雲端資料庫」
+    const submitBtn = document.getElementById('btn-save-expense');
+    if (submitBtn) submitBtn.textContent = "儲存至雲端資料庫";
     
+    // 如果畫面上有編輯模式留下來的「紅色刪除按鈕」，在這邊一併拔除
     const dynamicDeleteBtn = document.getElementById('form-dynamic-delete-btn');
     if (dynamicDeleteBtn) dynamicDeleteBtn.remove();
     
-    renderManualMemberFields();
+    // 🆕 修正點 2 (核心)：當表單重置時，幫「取消」按鈕重新加上 .hidden 隱藏起來！
+    const cancelEditBtn = document.getElementById('btn-cancel-edit');
+    if (cancelEditBtn) cancelEditBtn.classList.add('hidden');
+
+    renderManualMemberFields(); // 重新刷新下方旅伴出資分攤的空白欄位
 }
 
 function exitToPortal() {
@@ -938,6 +952,9 @@ function editItem(id) {
             submitBtn.parentNode.appendChild(deleteBtn);
         }
     }
+    // 🆕 新增：點擊編輯時顯示「取消」按鈕
+    const cancelEditBtn = document.getElementById('btn-cancel-edit');
+    if (cancelEditBtn) cancelEditBtn.classList.remove('hidden');
 
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
 }
