@@ -201,6 +201,11 @@ function handlePortalCsvMagic(e) {
                 await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/expenses`, {
                     method: "POST", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(bulkPayload)
                 });
+                //  新增：如果後端報錯，強制拋出異常阻斷後續的 Alert
+                if (!resExp.ok) {
+                    const errorText = await resExp.text();
+                    throw new Error(`資料庫寫入失敗: ${errorText}`);
+                }
             }
 
             alert(`🎉 魔法解鎖成功！自動偵測旅伴：[${finalMembers.join(', ')}]，並已上載 ${bulkPayload.length} 筆帳目！`);
@@ -225,7 +230,8 @@ function parseCsvLinesToPayload(lines, csvHeaders, membersList, tripId, tripBase
         if (cols.length < csvHeaders.length) continue;
         let row = {}; csvHeaders.forEach((h, idx) => { row[h] = cols[idx]; });
 
-        const date = row['登錄日期'] || row['建立日期'] || "2026-05-14";
+        const rawDate = row['登錄日期'] || row['建立日期'] || "";
+        const date = formatToIsoDate(rawDate);
         const name = row['備註'] || "未命名項目";
         const amount = parseFloat(row['金額']) || 0;
         
@@ -791,4 +797,36 @@ function editItem(id) {
     }
 
     document.getElementById('expense-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+// 自動將 D/M/YYYY 或其他格式安全轉換為 YYYY-MM-DD
+function formatToIsoDate(dateStr) {
+    if (!dateStr) return "2026-05-14"; // 預設防呆備用日期
+    dateStr = dateStr.trim();
+    
+    // 如果本來就已經是 YYYY-MM-DD 格式則直接回傳
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+    }
+    
+    // 依據斜線或橫線拆解
+    const parts = dateStr.split(/[\/\-]/);
+    if (parts.length === 3) {
+        let day, month, year;
+        
+        if (parts[0].length === 4) { // YYYY/MM/DD
+            year = parts[0]; month = parts[1]; day = parts[2];
+        } else if (parts[2].length === 4) { // D/M/YYYY
+            day = parts[0]; month = parts[1]; year = parts[2];
+        } else {
+            return "2026-05-14";
+        }
+        
+        // 自動補 0 (例如 5 -> 05)
+        const formattedMonth = month.padStart(2, '0');
+        const formattedDay = day.padStart(2, '0');
+        
+        return `${year}-${formattedMonth}-${formattedDay}`;
+    }
+    return "2026-05-14";
 }
