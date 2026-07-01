@@ -5,21 +5,66 @@ body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
-/* 客製化流水帳表格的滾動條 (Scrollbar)，等佢同深色主題融為一體 */
-.overflow-x-auto::-webkit-scrollbar {
+/* Tab 內容區底部留白，避免被固定 Tab Bar 遮住 */
+.tab-content-area {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* 底部 Tab Bar 安全區域 */
+#bottom-tabs {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Tab 按鈕 active 狀態 */
+.tab-btn.active {
+    color: #38bdf8; /* sky-400 */
+}
+
+.tab-btn.active span:last-child {
+    font-weight: 600;
+}
+
+/* Tab 切換淡入動畫 */
+.tab-panel:not(.hidden),
+.portal-view:not(.hidden) {
+    animation: tabFadeIn 0.2s ease-out;
+}
+
+@keyframes tabFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 客製化滾動條 */
+.overflow-x-auto::-webkit-scrollbar,
+.tab-content-area::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 
-.overflow-x-auto::-webkit-scrollbar-track {
+.overflow-x-auto::-webkit-scrollbar-track,
+.tab-content-area::-webkit-scrollbar-track {
     background: #0f172a;
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb {
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.tab-content-area::-webkit-scrollbar-thumb {
     background: #334155; /* Slate 700 */
     border-radius: 4px;
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+.overflow-x-auto::-webkit-scrollbar-thumb:hover,
+.tab-content-area::-webkit-scrollbar-thumb:hover {
     background: #475569; /* Slate 600 */
+}
+
+/* 帳目明細卡片 */
+.expense-card time {
+    letter-spacing: 0.02em;
 }
