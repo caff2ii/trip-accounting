@@ -231,6 +231,13 @@ function bindEvents() {
         resetFilterBtn.addEventListener('click', resetExpenseFilters);
     }
 
+    const filterToggleBtn = document.getElementById('expense-filter-toggle');
+    if (filterToggleBtn) {
+        filterToggleBtn.addEventListener('click', () => toggleExpenseFilterPanel());
+    }
+
+    toggleExpenseFilterPanel(false);
+
     const moreBtn = document.getElementById('btn-header-more');
     const moreDropdown = document.getElementById('header-more-dropdown');
     if (moreBtn && moreDropdown) {
@@ -954,6 +961,18 @@ function clearExpenseFilterState() {
 function resetExpenseFilters() {
     clearExpenseFilterState();
     renderAll();
+}
+
+function toggleExpenseFilterPanel(forceOpen) {
+    const panel = document.getElementById('expense-filter-panel');
+    const button = document.getElementById('expense-filter-toggle');
+    const label = document.getElementById('expense-filter-toggle-text');
+    if (!panel || !button) return;
+
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if (label) label.textContent = shouldOpen ? '收合' : '展開';
 }
 
 function handleExpenseKeywordFilterChange(e) {

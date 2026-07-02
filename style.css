@@ -68,3 +68,16 @@ body {
 .expense-card time {
     letter-spacing: 0.02em;
 }
+
+/* 篩選面板收合動畫 */
+#expense-filter-panel {
+    transition: all 0.2s ease;
+}
+
+#expense-filter-toggle {
+    transition: color 0.2s ease;
+}
+
+#expense-filter-toggle:hover {
+    color: #38bdf8;
+}
