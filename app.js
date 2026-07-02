@@ -52,6 +52,13 @@ let currentMembers = [];
 let currentTripBaseCurrency = "AUD"; 
 let editingExpenseId = null; 
 let activeTab = 'list';
+let currentFilterState = {
+    dates: [],
+    categories: [],
+    paidPersons: [],
+    owedPersons: [],
+    keyword: ''
+};
 
 const TAB_STORAGE_KEY = 'trip-accounting-tab';
 const VALID_TABS = ['add', 'list', 'split', 'chart'];
@@ -212,6 +219,16 @@ function bindEvents() {
     const sortSelect = document.getElementById('expense-sort-select');
     if (sortSelect) {
         sortSelect.addEventListener('change', handleExpenseSortChange);
+    }
+
+    const keywordInput = document.getElementById('expense-keyword-filter');
+    if (keywordInput) {
+        keywordInput.addEventListener('input', handleExpenseKeywordFilterChange);
+    }
+
+    const resetFilterBtn = document.getElementById('expense-filter-reset');
+    if (resetFilterBtn) {
+        resetFilterBtn.addEventListener('click', resetExpenseFilters);
     }
 
     const moreBtn = document.getElementById('btn-header-more');
@@ -490,6 +507,7 @@ function enterDashboard(id, name, code, members, baseCurrency = "AUD") {
     document.getElementById('trip-code-badge').textContent = `CODE: ${code} (${currentTripBaseCurrency})`;
     document.getElementById('trip-members-display').textContent = `旅伴成員: ${currentMembers.join(', ')} (${currentMembers.length} 人)`;
     document.getElementById('settlement-title').textContent = `最終 ${currentMembers.length} 人分帳對帳單 (${currentTripBaseCurrency})`;
+    clearExpenseFilterState();
     // 💡 全自動捕捉畫面上所有 class 為 base-currency-label 嘅標籤，並將 --- 替換為當前本位幣 (例如 HKD)
     document.querySelectorAll('.base-currency-label').forEach(el => {
         el.textContent = currentTripBaseCurrency;
@@ -598,6 +616,7 @@ function exitToPortal() {
     currentTripBaseCurrency = "AUD"; 
     
     resetFormState();
+    clearExpenseFilterState();
     
     if (document.getElementById('input-load-code')) document.getElementById('input-load-code').value = "";
     if (document.getElementById('input-new-trip-name')) document.getElementById('input-new-trip-name').value = "";
@@ -920,12 +939,159 @@ function getCategoryBadgeClass(category) {
     return map[category] || "bg-slate-900 text-slate-300 border-slate-700";
 }
 
+function clearExpenseFilterState() {
+    currentFilterState = {
+        dates: [],
+        categories: [],
+        paidPersons: [],
+        owedPersons: [],
+        keyword: ''
+    };
+    const keywordInput = document.getElementById('expense-keyword-filter');
+    if (keywordInput) keywordInput.value = '';
+}
+
+function resetExpenseFilters() {
+    clearExpenseFilterState();
+    renderAll();
+}
+
+function handleExpenseKeywordFilterChange(e) {
+    currentFilterState.keyword = (e.target.value || '').trim().toLowerCase();
+    renderAll();
+}
+
+function handleExpenseFilterCheckboxChange(e) {
+    const group = e.target.dataset.group;
+    const value = e.target.dataset.value;
+    if (!group || !value) return;
+
+    const stateKeyMap = {
+        date: 'dates',
+        category: 'categories',
+        paidPerson: 'paidPersons',
+        owedPerson: 'owedPersons'
+    };
+
+    const stateKey = stateKeyMap[group];
+    if (!stateKey) return;
+
+    const selected = currentFilterState[stateKey];
+    if (e.target.checked) {
+        if (!selected.includes(value)) selected.push(value);
+    } else {
+        currentFilterState[stateKey] = selected.filter(item => item !== value);
+    }
+
+    renderAll();
+}
+
+function hasActiveExpenseFilters() {
+    return Boolean(
+        currentFilterState.keyword ||
+        currentFilterState.dates.length ||
+        currentFilterState.categories.length ||
+        currentFilterState.paidPersons.length ||
+        currentFilterState.owedPersons.length
+    );
+}
+
+function getFilteredExpenses() {
+    const keyword = currentFilterState.keyword.trim().toLowerCase();
+    const selectedDates = currentFilterState.dates;
+    const selectedCategories = currentFilterState.categories;
+    const selectedPaidPersons = currentFilterState.paidPersons;
+    const selectedOwedPersons = currentFilterState.owedPersons;
+
+    return expenses.filter(exp => {
+        const matchesKeyword = !keyword || (exp.name || '').toLowerCase().includes(keyword);
+        const matchesDate = selectedDates.length === 0 || selectedDates.includes(exp.date);
+        const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(exp.category);
+
+        const paidMembers = exp.paid_detail && typeof exp.paid_detail === 'object'
+            ? Object.keys(exp.paid_detail)
+            : [];
+        const matchesPaidPerson = selectedPaidPersons.length === 0 || (
+            (paidMembers.length > 0 && paidMembers.some(member => selectedPaidPersons.includes(member))) ||
+            selectedPaidPersons.includes(exp.payer)
+        );
+
+        const owedMembers = exp.split_detail && typeof exp.split_detail === 'object'
+            ? Object.keys(exp.split_detail)
+            : [];
+        const matchesOwedPerson = selectedOwedPersons.length === 0 || (
+            (owedMembers.length > 0 && owedMembers.some(member => selectedOwedPersons.includes(member))) ||
+            selectedOwedPersons.includes(exp.payer)
+        );
+
+        return matchesKeyword && matchesDate && matchesCategory && matchesPaidPerson && matchesOwedPerson;
+    });
+}
+
+function renderExpenseFilterOptions() {
+    const dateContainer = document.getElementById('expense-date-filter-options');
+    const categoryContainer = document.getElementById('expense-category-filter-options');
+    const paidContainer = document.getElementById('expense-paid-filter-options');
+    const owedContainer = document.getElementById('expense-owed-filter-options');
+
+    const buildOptions = (container, group, values) => {
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!values || values.length === 0) {
+            container.innerHTML = '<div class="text-xs text-slate-500">尚無可篩選資料</div>';
+            return;
+        }
+
+        values.forEach(value => {
+            const label = document.createElement('label');
+            label.className = 'flex items-center gap-2 text-xs text-slate-300 cursor-pointer';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'expense-filter-checkbox rounded border-slate-600 bg-slate-950 accent-sky-500';
+            checkbox.dataset.group = group;
+            checkbox.dataset.value = value;
+            checkbox.checked = currentFilterState[group === 'date' ? 'dates' : group === 'category' ? 'categories' : group === 'paidPerson' ? 'paidPersons' : 'owedPersons'].includes(value);
+            checkbox.addEventListener('change', handleExpenseFilterCheckboxChange);
+
+            const span = document.createElement('span');
+            span.className = 'truncate';
+            span.textContent = value;
+
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            container.appendChild(label);
+        });
+    };
+
+    const dateValues = [...new Set(expenses.map(exp => exp.date).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+    const categoryValues = [...new Set(expenses.map(exp => exp.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    const paidValues = [...new Set(expenses.flatMap(exp => {
+        const paidMembers = exp.paid_detail && typeof exp.paid_detail === 'object' ? Object.keys(exp.paid_detail) : [];
+        return paidMembers.length > 0 ? paidMembers : (exp.payer ? [exp.payer] : []);
+    }))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    const owedValues = [...new Set(expenses.flatMap(exp => {
+        const owedMembers = exp.split_detail && typeof exp.split_detail === 'object' ? Object.keys(exp.split_detail) : [];
+        return owedMembers.length > 0 ? owedMembers : (exp.payer ? [exp.payer] : []);
+    }))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+
+    buildOptions(dateContainer, 'date', dateValues);
+    buildOptions(categoryContainer, 'category', categoryValues);
+    buildOptions(paidContainer, 'paidPerson', paidValues);
+    buildOptions(owedContainer, 'owedPerson', owedValues);
+}
+
 function renderAll() {
     const cardsContainer = document.getElementById('expense-cards');
     const cardsEmpty = document.getElementById('expense-cards-empty');
     if (cardsContainer) cardsContainer.innerHTML = '';
     let totalNet = 0, totalSaved = 0;
     const tripBase = currentTripBaseCurrency || "AUD"; 
+    renderExpenseFilterOptions();
+    const visibleExpenses = getFilteredExpenses();
     
     let catTotals = { "餐飲": 0, "超市": 0, "住房": 0, "汽車": 0, "休閒育樂": 0, "手信": 0, "通訊": 0, "醫療保健": 0, "其他": 0 };
     
@@ -936,7 +1102,7 @@ function renderAll() {
         userOwed[m] = 0; 
     });
 
-    expenses.forEach(exp => {
+    visibleExpenses.forEach(exp => {
         const netAmt = exp.net_amount_base !== undefined ? exp.net_amount_base : (exp.net_amount_aud || 0);
         const savedAmt = exp.shopback_saved_base !== undefined ? exp.shopback_saved_base : (exp.shopback_saved_aud || 0);
         const baseAmt = exp.amount_in_base !== undefined ? exp.amount_in_base : (exp.amount_in_aud || 0);
@@ -1032,16 +1198,17 @@ function renderAll() {
     });
 
     if (cardsEmpty) {
-        cardsEmpty.classList.toggle('hidden', expenses.length > 0);
+        cardsEmpty.textContent = hasActiveExpenseFilters() && visibleExpenses.length === 0 ? '沒有符合篩選條件的帳目' : '暫無帳目記錄';
+        cardsEmpty.classList.toggle('hidden', visibleExpenses.length > 0 || expenses.length > 0);
     }
     
     document.getElementById('total-net-base').textContent = `$${totalNet.toFixed(2)} ${tripBase}`;
     document.getElementById('total-shopback-base').textContent = `$${totalSaved.toFixed(2)} ${tripBase}`;
-    document.getElementById('total-count').textContent = `${expenses.length} 筆`;
+    document.getElementById('total-count').textContent = `${visibleExpenses.length} 筆`;
 
     const settlementList = document.getElementById('settlement-list'); settlementList.innerHTML = '';
-    const settlementWarnings = getSettlementWarnings(expenses, currentMembers);
-    if (expenses.length > 0) {
+    const settlementWarnings = getSettlementWarnings(visibleExpenses, currentMembers);
+    if (visibleExpenses.length > 0) {
         let sHtml = '';
         if (settlementWarnings.length > 0) {
             sHtml += `<div class="mb-4 p-4 rounded-lg border border-amber-700/50 bg-amber-950/30 space-y-1.5">
